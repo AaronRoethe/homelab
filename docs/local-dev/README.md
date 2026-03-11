@@ -37,6 +37,19 @@ cd apps/echo-server
 make run
 ```
 
+For verbose logging (shows health check requests):
+
+```sh
+LOG_LEVEL=debug make run
+```
+
+| Log Level        | What You See                                   |
+| ---------------- | ---------------------------------------------- |
+| `debug`          | All requests including `/healthz` and `/ready` |
+| `info` (default) | Echo requests (`/`) only                       |
+| `warn`           | Warnings and errors only                       |
+| `error`          | Errors only                                    |
+
 Test it manually:
 
 ```sh

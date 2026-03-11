@@ -123,9 +123,29 @@ Kargo detects the new tag and promotes: dev (auto) → staging (auto) → prod (
 
 ## Configuration
 
-| Env Var | Default | Description                                             |
-| ------- | ------- | ------------------------------------------------------- |
-| —       | `:8080` | Listen address (hardcoded, change in main.go if needed) |
+| Env Var     | Default | Description                                     |
+| ----------- | ------- | ----------------------------------------------- |
+| `LOG_LEVEL` | `info`  | Log verbosity: `debug`, `info`, `warn`, `error` |
+
+Set `LOG_LEVEL=debug` to see health check requests in the logs. At the default
+`info` level, `/healthz` and `/ready` requests are silent to reduce noise.
+
+```sh
+# Local dev — see all requests including health checks
+LOG_LEVEL=debug make run
+
+# Production — only errors
+LOG_LEVEL=error ./echo-server
+```
+
+### Request Logging
+
+Every request is logged with method, path, status, duration, and remote address:
+
+```
+{"level":"INFO","msg":"request","method":"GET","path":"/","status":200,"duration_ms":0,"remote":"127.0.0.1:52431","user_agent":"curl/8.1.0"}
+{"level":"DEBUG","msg":"request","method":"GET","path":"/healthz","status":200,"duration_ms":0,"remote":"127.0.0.1:52432"}
+```
 
 The server has no external dependencies — no database, no config files. It starts
 in ~10ms and uses ~10MB of RAM.
