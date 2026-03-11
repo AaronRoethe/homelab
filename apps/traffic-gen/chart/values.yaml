@@ -1,0 +1,25 @@
+image:
+  repository: ghcr.io/aroethe/homelab/traffic-gen
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# CronJob schedule (default: every 15 minutes)
+schedule: "*/15 * * * *"
+
+# Traffic configuration
+traffic:
+  targetURL: http://echo-server:80
+  requests: 50
+  concurrency: 5
+  delayMs: 100
+
+resources:
+  requests:
+    cpu: 5m
+    memory: 8Mi
+  limits:
+    memory: 32Mi
+
+# Keep last N completed/failed jobs
+successfulJobsHistoryLimit: 3
+failedJobsHistoryLimit: 3
