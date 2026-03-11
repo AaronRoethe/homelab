@@ -64,23 +64,31 @@ Push your branch and open a PR against `main`.
 
 ### 3. Merge to Main (Developer)
 
-After PR approval, merge to `main`. Nothing deploys yet — Kargo watches the
-container registry, not git commits.
+After PR approval, merge to `main`.
 
-### 4. Build and Push Image (Developer)
+### 4. Build and Push Image (Automatic or Manual)
+
+**Option A — Automatic (CI):** The QA Build workflow triggers on every merge to
+master that touches `apps/`. It runs tests, auto-bumps the patch version, builds
+ARM64 images, and pushes to GHCR. No developer action needed.
+
+Monitor: **Actions tab** → `QA Build` workflow
+
+**Option B — Release (manual or weekly):** Go to **Actions** → `Release` →
+**Run workflow**, pick the app and bump type (patch/minor/major). Or wait for
+the weekly Monday 09:00 UTC scheduled run.
+
+**Option C — Local:** For quick iteration:
 
 ```sh
 make echo-release VERSION=0.2.0
 ```
 
-This runs unit tests first, then builds an ARM64 image and pushes two tags:
+All three options push a semver-tagged image to GHCR — **this is the trigger**.
+Once the image is in the registry, the platform takes over.
 
-- `ghcr.io/aroethe/homelab/echo-server:0.2.0`
-- `ghcr.io/aroethe/homelab/echo-server:latest`
-
-**This is the trigger.** Once the image is in the registry, the platform takes over.
-
-If you also updated the E2E test suite, rebuild the test container:
+If you also updated the E2E test suite, the QA Build workflow rebuilds the
+test container automatically. For manual builds:
 
 ```sh
 make echo-e2e-push
@@ -250,13 +258,16 @@ If something goes wrong in production:
 
 ## Links
 
-| Resource      | URL                                     |
-| ------------- | --------------------------------------- |
-| Kargo UI      | `http://<pi-ip>:30081`                  |
-| ArgoCD UI     | `http://<pi-ip>:30080`                  |
-| Kargo Project | Kargo UI → echo-server                  |
-| Promotions    | `kubectl get promotions -n echo-server` |
-| Freight       | `kubectl get freight -n echo-server`    |
-| Dev App       | ArgoCD UI → echo-server-dev             |
-| Staging App   | ArgoCD UI → echo-server-staging         |
-| Prod App      | ArgoCD UI → echo-server-prod            |
+| Resource      | URL                                         |
+| ------------- | ------------------------------------------- |
+| QA Build      | GitHub → Actions → `QA Build`               |
+| Release       | GitHub → Actions → `Release` → Run workflow |
+| GHCR Images   | `ghcr.io/aroethe/homelab/echo-server`       |
+| Kargo UI      | `http://<pi-ip>:30081`                      |
+| ArgoCD UI     | `http://<pi-ip>:30080`                      |
+| Kargo Project | Kargo UI → echo-server                      |
+| Promotions    | `kubectl get promotions -n echo-server`     |
+| Freight       | `kubectl get freight -n echo-server`        |
+| Dev App       | ArgoCD UI → echo-server-dev                 |
+| Staging App   | ArgoCD UI → echo-server-staging             |
+| Prod App      | ArgoCD UI → echo-server-prod                |

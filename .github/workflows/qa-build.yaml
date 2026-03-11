@@ -1,0 +1,217 @@
+name: QA Build
+
+# Triggers on every merge to master. Detects which apps changed,
+# bumps the patch version, builds ARM64 images, and pushes to GHCR.
+# Kargo Warehouse picks up the new tag and promotes through dev → staging.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "apps/**"
+
+env:
+  REGISTRY: ghcr.io/aroethe/homelab
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      echo-server: ${{ steps.changes.outputs.echo-server }}
+      traffic-gen: ${{ steps.changes.outputs.traffic-gen }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            echo-server:
+              - 'apps/echo-server/**'
+            traffic-gen:
+              - 'apps/traffic-gen/**'
+
+  qa-echo-server:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.echo-server == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run unit tests
+        working-directory: apps/echo-server
+        run: go test -race -count=1 ./...
+
+      - name: Determine next QA version
+        id: version
+        run: |
+          # Find latest echo-server tag, bump patch
+          LATEST=$(git tag -l 'echo-server/v*' --sort=-v:refname | head -1)
+          if [ -z "$LATEST" ]; then
+            NEXT="0.1.0"
+          else
+            # Strip prefix: echo-server/v0.1.2 → 0.1.2
+            VER="${LATEST#echo-server/v}"
+            MAJOR=$(echo "$VER" | cut -d. -f1)
+            MINOR=$(echo "$VER" | cut -d. -f2)
+            PATCH=$(echo "$VER" | cut -d. -f3)
+            NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "QA version: $NEXT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU (for ARM64)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push echo-server
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/echo-server
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/echo-server:qa-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Tag git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "echo-server/v${{ steps.version.outputs.version }}"
+          git push origin "echo-server/v${{ steps.version.outputs.version }}"
+
+      - name: Summary
+        run: |
+          echo "### QA Build: echo-server" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Version:** \`${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image:** \`${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Kargo:** Warehouse will detect this tag and promote to dev → staging" >> "$GITHUB_STEP_SUMMARY"
+
+  qa-traffic-gen:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.traffic-gen == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run vet
+        working-directory: apps/traffic-gen
+        run: go vet ./...
+
+      - name: Determine next QA version
+        id: version
+        run: |
+          LATEST=$(git tag -l 'traffic-gen/v*' --sort=-v:refname | head -1)
+          if [ -z "$LATEST" ]; then
+            NEXT="0.1.0"
+          else
+            VER="${LATEST#traffic-gen/v}"
+            MAJOR=$(echo "$VER" | cut -d. -f1)
+            MINOR=$(echo "$VER" | cut -d. -f2)
+            PATCH=$(echo "$VER" | cut -d. -f3)
+            NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "QA version: $NEXT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU (for ARM64)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push traffic-gen
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/traffic-gen
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/traffic-gen:qa-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Tag git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "traffic-gen/v${{ steps.version.outputs.version }}"
+          git push origin "traffic-gen/v${{ steps.version.outputs.version }}"
+
+      - name: Summary
+        run: |
+          echo "### QA Build: traffic-gen" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Version:** \`${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image:** \`${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+  qa-e2e-image:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.echo-server == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU (for ARM64)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push E2E test image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/echo-server
+          file: apps/echo-server/e2e/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/echo-server-e2e:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

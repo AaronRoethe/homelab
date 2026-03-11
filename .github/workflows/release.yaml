@@ -1,0 +1,264 @@
+name: Release
+
+# Cut a release manually or on a weekly schedule.
+# Bumps minor version by default, creates a GitHub Release with changelog,
+# builds ARM64 images, and pushes to GHCR.
+# Kargo picks up the new tag → flows through dev → staging → prod (manual approval).
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "App to release"
+        required: true
+        type: choice
+        options:
+          - echo-server
+          - traffic-gen
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        default: minor
+        options:
+          - patch
+          - minor
+          - major
+
+  schedule:
+    # Weekly release: Mondays at 09:00 UTC
+    - cron: "0 9 * * 1"
+
+env:
+  REGISTRY: ghcr.io/aroethe/homelab
+
+jobs:
+  release-echo-server:
+    if: >
+      (github.event_name == 'workflow_dispatch' && inputs.app == 'echo-server') ||
+      github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run unit tests
+        working-directory: apps/echo-server
+        run: go test -race -count=1 ./...
+
+      - name: Determine release version
+        id: version
+        run: |
+          BUMP="${{ inputs.bump || 'minor' }}"
+          LATEST=$(git tag -l 'echo-server/v*' --sort=-v:refname | head -1)
+
+          if [ -z "$LATEST" ]; then
+            case "$BUMP" in
+              major) NEXT="1.0.0" ;;
+              minor) NEXT="0.1.0" ;;
+              patch) NEXT="0.0.1" ;;
+            esac
+          else
+            VER="${LATEST#echo-server/v}"
+            MAJOR=$(echo "$VER" | cut -d. -f1)
+            MINOR=$(echo "$VER" | cut -d. -f2)
+            PATCH=$(echo "$VER" | cut -d. -f3)
+            case "$BUMP" in
+              major) NEXT="$((MAJOR + 1)).0.0" ;;
+              minor) NEXT="${MAJOR}.$((MINOR + 1)).0" ;;
+              patch) NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+            esac
+          fi
+
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "previous=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Release version: $NEXT (bump: $BUMP, previous: $LATEST)"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV="${{ steps.version.outputs.previous }}"
+          if [ -z "$PREV" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${PREV}..HEAD"
+          fi
+
+          {
+            echo "changelog<<EOF"
+            git log "$RANGE" --oneline --no-merges -- apps/echo-server/ | head -20
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU (for ARM64)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push echo-server
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/echo-server
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/echo-server:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push E2E test image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/echo-server
+          file: apps/echo-server/e2e/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/echo-server-e2e:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: echo-server/v${{ steps.version.outputs.version }}
+          name: echo-server v${{ steps.version.outputs.version }}
+          body: |
+            ## echo-server v${{ steps.version.outputs.version }}
+
+            **Image:** `${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}`
+
+            ### What happens next
+            1. Kargo Warehouse detects the new tag (~5 min)
+            2. Auto-deploys to **dev** → verification runs
+            3. Auto-deploys to **staging** → E2E test suite runs
+            4. **Prod** requires manual approval in [Kargo UI](http://<pi-ip>:30081)
+
+            ### Changes since ${{ steps.version.outputs.previous || 'initial' }}
+            ```
+            ${{ steps.changelog.outputs.changelog }}
+            ```
+          draft: false
+          prerelease: false
+
+  release-traffic-gen:
+    if: >
+      github.event_name == 'workflow_dispatch' && inputs.app == 'traffic-gen'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run vet
+        working-directory: apps/traffic-gen
+        run: go vet ./...
+
+      - name: Determine release version
+        id: version
+        run: |
+          BUMP="${{ inputs.bump || 'minor' }}"
+          LATEST=$(git tag -l 'traffic-gen/v*' --sort=-v:refname | head -1)
+
+          if [ -z "$LATEST" ]; then
+            case "$BUMP" in
+              major) NEXT="1.0.0" ;;
+              minor) NEXT="0.1.0" ;;
+              patch) NEXT="0.0.1" ;;
+            esac
+          else
+            VER="${LATEST#traffic-gen/v}"
+            MAJOR=$(echo "$VER" | cut -d. -f1)
+            MINOR=$(echo "$VER" | cut -d. -f2)
+            PATCH=$(echo "$VER" | cut -d. -f3)
+            case "$BUMP" in
+              major) NEXT="$((MAJOR + 1)).0.0" ;;
+              minor) NEXT="${MAJOR}.$((MINOR + 1)).0" ;;
+              patch) NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+            esac
+          fi
+
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "previous=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Release version: $NEXT (bump: $BUMP, previous: $LATEST)"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV="${{ steps.version.outputs.previous }}"
+          if [ -z "$PREV" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${PREV}..HEAD"
+          fi
+
+          {
+            echo "changelog<<EOF"
+            git log "$RANGE" --oneline --no-merges -- apps/traffic-gen/ | head -20
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU (for ARM64)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push traffic-gen
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/traffic-gen
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/traffic-gen:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: traffic-gen/v${{ steps.version.outputs.version }}
+          name: traffic-gen v${{ steps.version.outputs.version }}
+          body: |
+            ## traffic-gen v${{ steps.version.outputs.version }}
+
+            **Image:** `${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }}`
+
+            ### Changes since ${{ steps.version.outputs.previous || 'initial' }}
+            ```
+            ${{ steps.changelog.outputs.changelog }}
+            ```
+          draft: false
+          prerelease: false
