@@ -1,0 +1,46 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: echo-server-dev-verify
+  namespace: echo-server
+spec:
+  metrics:
+    - name: health-check
+      provider:
+        job:
+          spec:
+            backoffLimit: 1
+            activeDeadlineSeconds: 30
+            ttlSecondsAfterFinished: 120
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: verify
+                    image: curlimages/curl:latest
+                    imagePullPolicy: IfNotPresent
+                    resources:
+                      requests:
+                        cpu: 5m
+                        memory: 8Mi
+                      limits:
+                        memory: 16Mi
+                    command: [sh, -c]
+                    args:
+                      - |
+                        set -e
+                        SVC="http://echo-server.dev.svc.cluster.local:80"
+
+                        for i in 1 2 3; do
+                          curl -sf --max-time 5 "$SVC/healthz" && break
+                          echo "Attempt $i: waiting for service..."
+                          sleep 3
+                        done
+
+                        curl -sf "$SVC/healthz" | grep -q '"status":"ok"'
+                        echo "PASS: /healthz"
+
+                        curl -sf "$SVC/" | grep -q '"hostname"'
+                        echo "PASS: / echo endpoint"
+
+                        echo "dev gate passed"

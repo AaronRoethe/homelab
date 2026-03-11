@@ -2,14 +2,14 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
 	"syscall"
 	"time"
+
+	"github.com/aroethe/homelab/apps/echo-server/internal/handler"
 )
 
 func main() {
@@ -17,9 +17,9 @@ func main() {
 	slog.SetDefault(logger)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", handleEcho)
-	mux.HandleFunc("GET /healthz", handleHealth)
-	mux.HandleFunc("GET /ready", handleHealth)
+	mux.HandleFunc("GET /", handler.HandleEcho)
+	mux.HandleFunc("GET /healthz", handler.HandleHealth)
+	mux.HandleFunc("GET /ready", handler.HandleHealth)
 
 	srv := &http.Server{
 		Addr:         ":8080",
@@ -48,27 +48,4 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		slog.Error("shutdown error", "err", err)
 	}
-}
-
-func handleEcho(w http.ResponseWriter, r *http.Request) {
-	hostname, _ := os.Hostname()
-
-	resp := map[string]any{
-		"hostname":  hostname,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-		"method":    r.Method,
-		"path":      r.URL.Path,
-		"headers":   r.Header,
-		"go":        runtime.Version(),
-		"arch":      runtime.GOARCH,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-func handleHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

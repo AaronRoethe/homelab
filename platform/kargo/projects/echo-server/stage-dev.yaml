@@ -10,6 +10,9 @@ spec:
         name: echo-server
       sources:
         direct: true
+  verification:
+    analysisTemplates:
+      - name: echo-server-dev-verify
   promotionTemplate:
     spec:
       steps:

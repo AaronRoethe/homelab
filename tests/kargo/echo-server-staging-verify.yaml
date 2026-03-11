@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: echo-server-staging-verify
+  namespace: echo-server
+spec:
+  metrics:
+    - name: e2e-tests
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            activeDeadlineSeconds: 120
+            ttlSecondsAfterFinished: 300
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: e2e
+                    image: ghcr.io/aroethe/homelab/echo-server-e2e:latest
+                    imagePullPolicy: Always
+                    resources:
+                      requests:
+                        cpu: 10m
+                        memory: 32Mi
+                      limits:
+                        memory: 64Mi
+                    env:
+                      - name: SERVICE_URL
+                        value: http://echo-server.staging.svc.cluster.local:80
