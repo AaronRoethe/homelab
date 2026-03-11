@@ -3,6 +3,9 @@ kind: Application
 metadata:
   name: registry
   namespace: argocd
+  labels:
+    homelab/tier: platform
+    homelab/app: registry
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
