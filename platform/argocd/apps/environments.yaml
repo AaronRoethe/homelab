@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: echo-server
+  name: environments
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -10,18 +10,13 @@ spec:
   source:
     # TODO: Update to your repo URL
     repoURL: https://github.com/aroethe/homelab
-    path: charts/echo-server
+    path: platform/environments
     targetRevision: main
-    helm:
-      valueFiles:
-        - values.yaml
-        - values-pi.yaml
+    directory:
+      recurse: true
   destination:
     server: https://kubernetes.default.svc
-    namespace: apps
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
-    syncOptions:
-      - CreateNamespace=true

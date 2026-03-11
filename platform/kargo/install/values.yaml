@@ -1,0 +1,39 @@
+api:
+  adminAccount:
+    enabled: true
+    # Generate with: openssl rand -base64 32
+    # Set via --set or override in a local values file not committed to git
+    tokenSigningKey: ""
+  service:
+    type: NodePort
+    nodePort: 30081
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+controller:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+managementController:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+webhooksServer:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi

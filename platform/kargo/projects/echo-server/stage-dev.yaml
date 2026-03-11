@@ -1,0 +1,44 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: dev
+  namespace: echo-server
+spec:
+  requestedFreight:
+    - origin:
+        kind: Warehouse
+        name: echo-server
+      sources:
+        direct: true
+  promotionTemplate:
+    spec:
+      steps:
+        - uses: git-clone
+          config:
+            repoURL: https://github.com/aroethe/homelab
+            checkout:
+              - branch: main
+                path: ./src
+        - uses: helm-update-image
+          as: update-image
+          config:
+            path: ./src/platform/overlays/echo-server/values-dev.yaml
+            images:
+              - image: ghcr.io/aroethe/homelab/echo-server
+                key: image.tag
+                value: Tag
+        - uses: git-commit
+          config:
+            path: ./src
+            messageFromSteps:
+              - update-image
+        - uses: git-push
+          config:
+            path: ./src
+        - uses: argocd-update
+          config:
+            apps:
+              - name: echo-server-dev
+                sources:
+                  - repoURL: https://github.com/aroethe/homelab
+                    desiredRevision: ${{ outputs.steps['git-push'].commit }}

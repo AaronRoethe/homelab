@@ -10,26 +10,158 @@ Kargo as the GitOps promotion engine on top of ArgoCD.
 outgrow the Pi, you change ArgoCD Application `destination.server` values and
 everything else stays the same.
 
+## System Graph
+
+```mermaid
+graph TB
+    subgraph repo["GitHub Repository (homelab)"]
+        subgraph apps_code["apps/echo-server/ — Dev Team"]
+            code["cmd/server/main.go<br/>Dockerfile"]
+            chart["chart/<br/>Chart.yaml + values.yaml + templates/"]
+        end
+        subgraph overlays["platform/overlays/ — Ops Team"]
+            vpi["values-pi.yaml"]
+            vdev["values-dev.yaml"]
+            vstg["values-staging.yaml"]
+            vprod["values-prod.yaml"]
+        end
+        subgraph kargo_cfg["platform/kargo/ — Ops Team"]
+            project["Project + Warehouse + Stages"]
+        end
+    end
+
+    subgraph ghcr["GHCR Registry"]
+        tags["echo-server:<br/>0.1.0, 0.2.0, ..."]
+    end
+
+    subgraph cluster["k3s Cluster (Raspberry Pi 8GB)"]
+        warehouse["Kargo Warehouse"]
+        argocd["ArgoCD"]
+
+        subgraph pipeline["Promotion Pipeline"]
+            dev_stage["Stage: dev<br/>(auto)"]
+            stg_stage["Stage: staging<br/>(auto)"]
+            prod_stage["Stage: prod<br/>(manual)"]
+            dev_stage -->|"healthy"| stg_stage
+            stg_stage -->|"healthy"| prod_stage
+        end
+
+        subgraph namespaces["Kubernetes Namespaces"]
+            ns_dev["ns: dev<br/>echo-server<br/>quota: 512Mi/1Gi"]
+            ns_stg["ns: staging<br/>echo-server<br/>quota: 512Mi/1Gi"]
+            ns_prod["ns: prod<br/>echo-server<br/>quota: 1Gi/1.5Gi"]
+        end
+
+        warehouse -->|"creates Freight"| dev_stage
+        warehouse -->|"triggers"| argocd
+        dev_stage --> ns_dev
+        stg_stage --> ns_stg
+        prod_stage --> ns_prod
+    end
+
+    code -->|"docker build + push"| tags
+    tags -->|"polls for new tags"| warehouse
+    chart -->|"multi-source"| argocd
+    overlays -->|"multi-source"| argocd
+    kargo_cfg --> warehouse
+    argocd -->|"sync"| namespaces
 ```
-┌─────────────┐
-│  GHCR Image  │
-│  Registry    │
-└──────┬───────┘
-       │ polls for new tags
-┌──────▼───────┐
-│   Warehouse  │  Kargo: detects new image versions
-└──────┬───────┘
-       │ creates Freight
-┌──────▼───────┐     ┌──────────────┐     ┌──────────────┐
-│  Stage: dev  │────▶│Stage: staging│────▶│  Stage: prod │
-│  (auto)      │     │  (auto)      │     │  (manual)    │
-└──────┬───────┘     └──────┬───────┘     └──────┬───────┘
-       │                    │                    │
-       ▼                    ▼                    ▼
-  ns: dev              ns: staging          ns: prod
-  echo-server-dev      echo-server-staging  echo-server-prod
-  (ArgoCD App)         (ArgoCD App)         (ArgoCD App)
+
+## Data Flow
+
+```mermaid
+flowchart TD
+    push["Developer pushes code"] --> build["CI / make echo-release VERSION=0.2.0"]
+    build --> ghcr["GHCR: new tag 0.2.0"]
+    ghcr --> warehouse["Warehouse polls → creates Freight 0.2.0"]
+
+    warehouse --> dev["Stage: dev (auto-promote)"]
+    dev --> dev_steps["1. git clone homelab<br/>2. update overlays/values-dev.yaml<br/>3. git commit + push<br/>4. ArgoCD syncs echo-server-dev<br/>5. health check passes"]
+
+    dev_steps -->|"dev healthy"| staging["Stage: staging (auto-promote)"]
+    staging --> stg_steps["1. git clone homelab<br/>2. update overlays/values-staging.yaml<br/>3. git commit + push<br/>4. ArgoCD syncs echo-server-staging<br/>5. health check passes"]
+
+    stg_steps -->|"staging healthy"| gate{"Manual Approval<br/>Kargo UI / CLI"}
+    gate -->|"approved"| prod["Stage: prod"]
+    prod --> prod_steps["1. git clone homelab<br/>2. update overlays/values-prod.yaml<br/>3. git commit + push<br/>4. ArgoCD syncs echo-server-prod<br/>5. health check passes"]
 ```
+
+## Separation of Concerns
+
+```mermaid
+graph LR
+    subgraph dev_team["Dev Team Ownership"]
+        apps["apps/<br/>echo-server/"]
+        app_code["cmd/ + Dockerfile<br/>go.mod + Makefile"]
+        app_chart["chart/<br/>Chart.yaml<br/>values.yaml (defaults)<br/>templates/"]
+        apps --> app_code
+        apps --> app_chart
+    end
+
+    subgraph ops_team["Ops Team Ownership"]
+        platform["platform/"]
+        argocd_dir["argocd/<br/>install/ + apps/"]
+        cert["cert-manager/<br/>install/"]
+        kargo_dir["kargo/<br/>install/ + projects/"]
+        envs["environments/<br/>dev/ staging/ prod/"]
+        overlays_dir["overlays/echo-server/<br/>values-pi.yaml<br/>values-dev.yaml<br/>values-staging.yaml<br/>values-prod.yaml"]
+        platform --> argocd_dir
+        platform --> cert
+        platform --> kargo_dir
+        platform --> envs
+        platform --> overlays_dir
+    end
+
+    subgraph hw_team["Hardware / Provisioning"]
+        pi["pi-setup/<br/>install.sh<br/>01-system-prep.sh<br/>02-k3s-install.sh<br/>03-post-install.sh<br/>config/k3s-config.yaml"]
+    end
+
+    app_chart -.->|"base chart"| argocd_dir
+    overlays_dir -.->|"env values"| argocd_dir
+    kargo_dir -.->|"promotes tags in"| overlays_dir
+    pi -.->|"provisions"| envs
+```
+
+**Why this splits cleanly**: `apps/echo-server/` (code + chart) becomes its own repo.
+`platform/` becomes the infra repo. `pi-setup/` becomes a provisioning repo. The only
+change needed is updating `repoURL` fields in ArgoCD Applications and Kargo Stages.
+
+## ArgoCD Multi-Source Pattern
+
+Each per-env ArgoCD Application uses multi-source to combine the base chart
+(from `apps/`) with overlay values (from `platform/`):
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: echo-server-dev
+  namespace: argocd
+  labels:
+    kargo.akuity.io/authorized-stage: echo-server:dev
+spec:
+  project: default
+  sources:
+    # Source 1: base chart from app code
+    - repoURL: https://github.com/aroethe/homelab
+      targetRevision: main
+      path: apps/echo-server/chart
+      helm:
+        valueFiles:
+          - $overlays/platform/overlays/echo-server/values-pi.yaml
+          - $overlays/platform/overlays/echo-server/values-dev.yaml
+    # Source 2: ref for overlay values files
+    - repoURL: https://github.com/aroethe/homelab
+      targetRevision: main
+      ref: overlays
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dev
+```
+
+The `$overlays` ref lets ArgoCD resolve values files from the second source
+against the first source's Helm chart. This is what keeps app code and infra
+config decoupled while still working together.
 
 ## Resource Budget
 
@@ -41,58 +173,6 @@ everything else stays the same.
 | 3x echo-server (dev/staging/prod)      | ~96 MB        | 32 MB each                                 |
 | **Total**                              | **~2,076 MB** |                                            |
 | **Remaining for future workloads**     | **~5,900 MB** |                                            |
-
-## Prerequisites
-
-- Working k3s + ArgoCD (from initial setup)
-- Container registry (GHCR) with push access
-- GitHub Personal Access Token (for Kargo to commit tag updates)
-
-## Directory Structure
-
-New and modified paths relative to repo root:
-
-```
-platform/
-├── cert-manager/
-│   └── install/
-│       ├── kustomization.yaml          # Kustomize on upstream manifest
-│       └── patches/
-│           └── resource-limits.yaml    # Pi-tuned memory limits
-├── kargo/
-│   ├── install/
-│   │   └── values.yaml                # Helm values for Kargo (Pi-tuned)
-│   └── projects/
-│       └── echo-server/
-│           ├── project.yaml            # Kargo Project CRD
-│           ├── warehouse.yaml          # Watches GHCR for new tags
-│           ├── stage-dev.yaml          # Auto-promote from Warehouse
-│           ├── stage-staging.yaml      # Auto-promote from dev
-│           └── stage-prod.yaml         # Manual approval gate
-├── environments/
-│   ├── dev/
-│   │   └── namespace.yaml              # Namespace + ResourceQuota
-│   ├── staging/
-│   │   └── namespace.yaml
-│   └── prod/
-│       └── namespace.yaml
-└── argocd/
-    └── apps/
-        ├── root-app.yaml               # Unchanged (auto-discovers new apps)
-        ├── cert-manager.yaml           # NEW: ArgoCD App for cert-manager
-        ├── kargo.yaml                  # NEW: ArgoCD App for Kargo (multi-source)
-        ├── environments.yaml           # NEW: ArgoCD App for namespace setup
-        ├── echo-server-dev.yaml        # NEW: replaces echo-server.yaml
-        ├── echo-server-staging.yaml    # NEW
-        └── echo-server-prod.yaml       # NEW
-
-charts/echo-server/
-├── values.yaml                         # Unchanged (base defaults)
-├── values-pi.yaml                      # Unchanged (Pi resource overrides)
-├── values-dev.yaml                     # NEW: dev image tag + ingress host
-├── values-staging.yaml                 # NEW: staging (Kargo updates tag)
-└── values-prod.yaml                    # NEW: prod (Kargo updates tag)
-```
 
 ## Kargo Concepts
 
@@ -116,14 +196,14 @@ metadata:
 spec:
   promotionPolicies:
     - stage: dev
-      autoPromotionEnabled: true # New images go straight to dev
+      autoPromotionEnabled: true
     - stage: staging
-      autoPromotionEnabled: true # Auto-promote after dev is healthy
+      autoPromotionEnabled: true
     - stage: prod
-      autoPromotionEnabled: false # Human must approve
+      autoPromotionEnabled: false
 ```
 
-Creates a `echo-server` namespace where all Kargo resources for this app live.
+Creates an `echo-server` namespace where all Kargo resources for this app live.
 
 ### Warehouse
 
@@ -159,7 +239,7 @@ spec:
         kind: Warehouse
         name: echo-server
       sources:
-        direct: true # Accepts Freight directly from Warehouse
+        direct: true
   promotionTemplate:
     spec:
       steps:
@@ -172,7 +252,7 @@ spec:
         - uses: helm-update-image
           as: update-image
           config:
-            path: ./src/charts/echo-server/values-dev.yaml
+            path: ./src/platform/overlays/echo-server/values-dev.yaml
             images:
               - image: ghcr.io/aroethe/homelab/echo-server
                 key: image.tag
@@ -194,9 +274,6 @@ spec:
                     desiredRevision: ${{ outputs.steps['git-push'].commit }}
 ```
 
-Promotion steps: clone repo → update `values-dev.yaml` with new tag → commit →
-push → tell ArgoCD to sync.
-
 ### Stage: staging
 
 Same as dev, except:
@@ -208,55 +285,19 @@ requestedFreight:
       name: echo-server
     sources:
       stages:
-        - dev # Only Freight verified in dev
+        - dev
 ```
 
-Updates `values-staging.yaml` and syncs `echo-server-staging` ArgoCD App.
+Updates `platform/overlays/echo-server/values-staging.yaml` and syncs
+`echo-server-staging` ArgoCD App.
 
 ### Stage: prod
 
 Same pattern, except:
 
 - `sources.stages: [staging]` — requires Freight verified in staging
-- Updates `values-prod.yaml`, syncs `echo-server-prod`
+- Updates `platform/overlays/echo-server/values-prod.yaml`, syncs `echo-server-prod`
 - `autoPromotionEnabled: false` in Project — requires manual `kargo promote` or UI click
-
-## ArgoCD Applications (per environment)
-
-Each environment gets its own ArgoCD Application. Example for dev:
-
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: echo-server-dev
-  namespace: argocd
-  labels:
-    kargo.akuity.io/authorized-stage: echo-server:dev # Kargo authorization
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/aroethe/homelab
-    path: charts/echo-server
-    targetRevision: main
-    helm:
-      valueFiles:
-        - values.yaml
-        - values-pi.yaml
-        - values-dev.yaml
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: dev
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
-```
-
-The `kargo.akuity.io/authorized-stage` label is required — it authorizes the
-named Kargo Stage to trigger syncs on this Application.
 
 ## Kargo Installation (via ArgoCD)
 
@@ -284,12 +325,6 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: kargo
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
 ```
 
 ### Kargo Helm Values (Pi-tuned)
@@ -299,139 +334,55 @@ spec:
 api:
   adminAccount:
     enabled: true
-    tokenSigningKey: "" # Generate with: openssl rand -base64 32
+    tokenSigningKey: "" # openssl rand -base64 32
+  service:
+    type: NodePort
+    nodePort: 30081 # Kargo UI access
   resources:
-    requests:
-      cpu: 25m
-      memory: 64Mi
-    limits:
-      memory: 128Mi
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { memory: 128Mi }
 
 controller:
   resources:
-    requests:
-      cpu: 25m
-      memory: 64Mi
-    limits:
-      memory: 256Mi
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { memory: 256Mi }
 
 managementController:
   resources:
-    requests:
-      cpu: 10m
-      memory: 32Mi
-    limits:
-      memory: 128Mi
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 128Mi }
 
 webhooksServer:
   resources:
-    requests:
-      cpu: 10m
-      memory: 32Mi
-    limits:
-      memory: 64Mi
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 64Mi }
 ```
 
-## Per-Environment Helm Values
+## Environment Namespaces
 
-### values-dev.yaml
+Each environment gets a namespace with a ResourceQuota to prevent resource starvation:
 
-```yaml
-image:
-  tag: latest # Kargo overwrites this with semver tag
-  pullPolicy: Always
-ingress:
-  host: echo-dev.homelab.local
-resources:
-  requests:
-    cpu: 10m
-    memory: 16Mi
-  limits:
-    cpu: 100m
-    memory: 32Mi
-```
-
-### values-staging.yaml
-
-```yaml
-image:
-  tag: "0.1.0" # Kargo overwrites this
-ingress:
-  host: echo-staging.homelab.local
-resources:
-  requests:
-    cpu: 10m
-    memory: 16Mi
-  limits:
-    cpu: 100m
-    memory: 32Mi
-```
-
-### values-prod.yaml
-
-```yaml
-image:
-  tag: "0.1.0" # Kargo overwrites this
-ingress:
-  host: echo.homelab.local
-resources:
-  requests:
-    cpu: 10m
-    memory: 16Mi
-  limits:
-    cpu: 100m
-    memory: 32Mi
-```
-
-## Environment Namespaces with Resource Quotas
-
-```yaml
-# platform/environments/dev/namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: dev
-  labels:
-    environment: dev
----
-apiVersion: v1
-kind: ResourceQuota
-metadata:
-  name: env-quota
-  namespace: dev
-spec:
-  hard:
-    requests.memory: 512Mi
-    limits.memory: 1Gi
-    requests.cpu: 200m
-    limits.cpu: "1"
-```
-
-Quotas prevent any single environment from starving the others:
-
-| Environment | Memory Limit | CPU Limit |
-| ----------- | ------------ | --------- |
-| dev         | 1Gi          | 1 core    |
-| staging     | 1Gi          | 1 core    |
-| prod        | 1.5Gi        | 2 cores   |
+| Environment | Memory Request/Limit | CPU Request/Limit |
+| ----------- | -------------------- | ----------------- |
+| dev         | 512Mi / 1Gi          | 200m / 1 core     |
+| staging     | 512Mi / 1Gi          | 200m / 1 core     |
+| prod        | 1Gi / 1.5Gi          | 500m / 2 cores    |
 
 ## Manual Steps (not in git)
 
 ### 1. Git Credentials for Kargo
 
-Kargo needs write access to the repo to commit tag updates. Apply this Secret
-manually (never commit tokens to git):
+Kargo needs write access to the repo to commit tag updates:
 
 ```sh
-kubectl create namespace echo-server  # Or let Kargo Project create it
+kubectl create namespace echo-server
 
 kubectl -n echo-server create secret generic git-credentials \
   --from-literal=repoURL=https://github.com/aroethe/homelab \
   --from-literal=username=aroethe \
   --from-literal=password=<GITHUB_PAT>
 
-kubectl -n echo-server label secret git-credentials \
-  kargo.akuity.io/cred-type=git
+kubectl -n echo-server label secret git-credentials kargo.akuity.io/cred-type=git
 ```
 
 The PAT needs `repo` scope (read/write access to repository contents).
@@ -444,77 +395,33 @@ kubectl -n echo-server create secret generic image-credentials \
   --from-literal=username=aroethe \
   --from-literal=password=<GITHUB_PAT>
 
-kubectl -n echo-server label secret image-credentials \
-  kargo.akuity.io/cred-type=image
+kubectl -n echo-server label secret image-credentials kargo.akuity.io/cred-type=image
 ```
 
 ### 3. Kargo Admin Token Signing Key
 
-Generate and set in Kargo values before install:
-
 ```sh
 openssl rand -base64 32
-# Paste into platform/kargo/install/values.yaml → api.adminAccount.tokenSigningKey
-```
-
-## End-to-End Promotion Workflow
-
-```
-1. Push code change to apps/echo-server/
-          │
-2. Build + push image (manual or CI)
-   make echo-push-version VERSION=0.2.0
-          │
-3. Kargo Warehouse detects tag 0.2.0 → creates Freight
-          │
-4. Stage: dev (auto)
-   ├── Clone repo
-   ├── Update values-dev.yaml → image.tag: 0.2.0
-   ├── Commit + push
-   └── ArgoCD syncs echo-server-dev → ns: dev
-          │
-5. Stage: staging (auto, after dev healthy)
-   ├── Clone repo
-   ├── Update values-staging.yaml → image.tag: 0.2.0
-   ├── Commit + push
-   └── ArgoCD syncs echo-server-staging → ns: staging
-          │
-6. Stage: prod (manual approval required)
-   ├── Human approves in Kargo UI / CLI
-   ├── Clone repo
-   ├── Update values-prod.yaml → image.tag: 0.2.0
-   ├── Commit + push
-   └── ArgoCD syncs echo-server-prod → ns: prod
+# Set in platform/kargo/install/values.yaml → api.adminAccount.tokenSigningKey
 ```
 
 ## Installation Sequence
 
-| Step | Command                                                    | Wait for                               |
-| ---- | ---------------------------------------------------------- | -------------------------------------- |
-| 1    | `kubectl apply -k platform/cert-manager/install/`          | All 3 cert-manager pods Running        |
-| 2    | `kubectl apply -k platform/environments/` (or per-dir)     | Namespaces created                     |
-| 3    | Push Kargo ArgoCD App → ArgoCD syncs                       | All 4 Kargo pods Running in `kargo` ns |
-| 4    | Apply git + image credential Secrets manually              | Secrets exist                          |
-| 5    | `kubectl apply -f platform/kargo/projects/echo-server/`    | Project + Warehouse + Stages created   |
-| 6    | Replace `echo-server.yaml` with per-env apps, push to main | ArgoCD syncs 3 apps                    |
-| 7    | `make echo-push-version VERSION=0.1.0`                     | Freight flows through pipeline         |
+| Step | Command                                             | Wait for                             |
+| ---- | --------------------------------------------------- | ------------------------------------ |
+| 1    | `make argocd-install`                               | ArgoCD pods Running                  |
+| 2    | `make argocd-bootstrap`                             | Root app synced                      |
+| 3    | ArgoCD auto-syncs cert-manager, environments, Kargo | All pods Running                     |
+| 4    | Apply git + image credential Secrets (manual)       | Secrets exist                        |
+| 5    | `make kargo-projects`                               | Project + Warehouse + Stages created |
+| 6    | `make echo-release VERSION=0.1.0`                   | Freight flows through pipeline       |
 
-## Accessing the Kargo UI
+## Accessing UIs
 
-Expose via NodePort (add to Kargo Helm values):
-
-```yaml
-api:
-  service:
-    type: NodePort
-    nodePort: 30081
-```
-
-Then access at `http://<pi-ip>:30081`. Login with the admin token:
-
-```sh
-kargo login https://<pi-ip>:30081 --admin
-```
+| Service | URL                    | Credentials            |
+| ------- | ---------------------- | ---------------------- |
+| ArgoCD  | `http://<pi-ip>:30080` | `make argocd-password` |
+| Kargo   | `http://<pi-ip>:30081` | `kargo login --admin`  |
 
 ## Known Considerations
 
@@ -523,7 +430,7 @@ because Kargo's `argocd-update` step pins ArgoCD to a specific commit SHA. ArgoC
 sees desired state = live state and does not re-sync.
 
 **Semver discipline**: The Warehouse uses `semverConstraint`. Images must be tagged
-with valid semver (0.1.0, 0.2.0), not `latest`. Update the Makefile to enforce this.
+with valid semver (0.1.0, 0.2.0), not `latest`. Use `make echo-release VERSION=x.y.z`.
 
 **Single-branch model**: All environments' values files live on `main`. Kargo's
 sequential commits (dev, then staging, then prod) avoid conflicts. If two Freight
@@ -531,4 +438,4 @@ items race, Kargo retries automatically.
 
 **Scaling out**: When you add a second app, create a new directory under
 `platform/kargo/projects/<app-name>/` with its own Project, Warehouse, and Stages.
-Add three ArgoCD Applications. The pattern is identical.
+Add per-env ArgoCD Applications and overlays. The pattern is identical.

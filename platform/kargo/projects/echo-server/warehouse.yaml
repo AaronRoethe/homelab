@@ -1,0 +1,11 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: echo-server
+  namespace: echo-server
+spec:
+  subscriptions:
+    - image:
+        repoURL: ghcr.io/aroethe/homelab/echo-server
+        semverConstraint: ">=0.1.0"
+        discoveryLimit: 5
