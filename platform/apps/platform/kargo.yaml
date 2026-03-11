@@ -17,7 +17,7 @@ spec:
       helm:
         valueFiles:
           - $values/platform/infra/kargo/values.yaml
-    - repoURL: https://github.com/aroethe/homelab
+    - repoURL: https://github.com/AaronRoethe/homelab
       targetRevision: main
       ref: values
   destination:

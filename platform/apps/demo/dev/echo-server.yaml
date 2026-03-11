@@ -14,7 +14,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/aroethe/homelab
+    repoURL: https://github.com/AaronRoethe/homelab
     targetRevision: main
     path: apps/echo-server/chart
     helm:

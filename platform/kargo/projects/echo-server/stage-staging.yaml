@@ -19,7 +19,7 @@ spec:
       steps:
         - uses: git-clone
           config:
-            repoURL: https://github.com/aroethe/homelab
+            repoURL: https://github.com/AaronRoethe/homelab
             checkout:
               - branch: main
                 path: ./src
@@ -43,5 +43,5 @@ spec:
             apps:
               - name: echo-server-staging
                 sources:
-                  - repoURL: https://github.com/aroethe/homelab
+                  - repoURL: https://github.com/AaronRoethe/homelab
                     desiredRevision: ${{ outputs.steps['git-push'].commit }}

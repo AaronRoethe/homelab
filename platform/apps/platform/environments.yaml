@@ -11,8 +11,7 @@ metadata:
 spec:
   project: default
   source:
-    # TODO: Update to your repo URL
-    repoURL: https://github.com/aroethe/homelab
+    repoURL: https://github.com/AaronRoethe/homelab
     path: platform/environments
     targetRevision: main
     directory:
