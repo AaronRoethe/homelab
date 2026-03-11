@@ -15,36 +15,41 @@ Run and test the homelab services on your local machine — either standalone
 
 ## Local Cluster (full stack)
 
-Spin up a local k3d cluster with ArgoCD, Kargo, registry — everything
-that runs on the Pi, running on your Mac.
+One command to create a k3d cluster, install ArgoCD + Kargo, build all app
+images, and deploy everything:
 
 ```sh
-# Create cluster + registry
-./scripts/local-cluster.sh create
-
-# Install ArgoCD + apply app-of-apps
-./scripts/local-cluster.sh bootstrap
-
-# Check status
-./scripts/local-cluster.sh status
+make cluster-up
 ```
 
-ArgoCD UI at `http://localhost:30080` — credentials printed by bootstrap.
+This takes ~3 minutes and gives you:
 
-ArgoCD auto-syncs all apps from `platform/apps/`. Push an image to the
-local registry and Kargo promotes it through dev → staging → prod:
+- k3d cluster with local container registry
+- ArgoCD syncing all platform services (cert-manager, Kargo, registry)
+- echo-server running in dev, staging, and prod namespaces
+- Credentials printed at the end
+
+### Individual commands
 
 ```sh
-# Build and push to local registry
-cd apps/echo-server
-docker build -t k3d-registry.homelab.local:30500/echo-server:0.1.0 .
-docker push k3d-registry.homelab.local:30500/echo-server:0.1.0
+make cluster-create      # Create cluster + registry only
+make cluster-bootstrap   # Install ArgoCD + root app-of-apps
+make cluster-deploy      # Build images + push to registry
+make cluster-status      # Show cluster, apps, pods
+make cluster-delete      # Tear everything down
 ```
 
-To tear it all down:
+### UIs
+
+| Service | URL                    | Credentials                    |
+| ------- | ---------------------- | ------------------------------ |
+| ArgoCD  | http://localhost:30080 | admin / (printed by bootstrap) |
+| Kargo   | http://localhost:30081 | admin / admin                  |
+
+### Fresh restart
 
 ```sh
-./scripts/local-cluster.sh delete
+make cluster-delete && make cluster-up
 ```
 
 ## Standalone (no cluster)
