@@ -1,6 +1,6 @@
 .PHONY: help pi-setup argocd-install argocd-bootstrap cert-manager-install kargo-projects kargo-verification echo-build echo-push echo-release echo-test echo-e2e-build echo-e2e-push validate-chart smoke-dev smoke-staging smoke-prod smoke-all
 
-REGISTRY ?= ghcr.io/aroethe/homelab
+REGISTRY ?= registry.homelab.local:30500
 PI_HOST ?= homelab.local
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0")
 

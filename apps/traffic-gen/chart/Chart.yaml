@@ -1,0 +1,6 @@
+apiVersion: v2
+name: traffic-gen
+description: CronJob that sends configurable fake traffic to echo-server
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

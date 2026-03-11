@@ -1,0 +1,157 @@
+name: QA Build
+
+# Triggers on every merge to master. Detects which apps changed,
+# bumps the patch version, builds ARM64 images natively on the Pi,
+# and pushes to the local registry.
+# Kargo Warehouse picks up the new tag and promotes through dev → staging.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "apps/**"
+
+env:
+  REGISTRY: registry.homelab.local:30500
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      echo-server: ${{ steps.changes.outputs.echo-server }}
+      traffic-gen: ${{ steps.changes.outputs.traffic-gen }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            echo-server:
+              - 'apps/echo-server/**'
+            traffic-gen:
+              - 'apps/traffic-gen/**'
+
+  qa-echo-server:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.echo-server == 'true'
+    runs-on: [self-hosted, arm64]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run unit tests
+        working-directory: apps/echo-server
+        run: go test -race -count=1 ./...
+
+      - name: Determine next QA version
+        id: version
+        run: |
+          LATEST=$(git tag -l 'echo-server/v*' --sort=-v:refname | head -1)
+          if [ -z "$LATEST" ]; then
+            NEXT="0.1.0"
+          else
+            VER="${LATEST#echo-server/v}"
+            MAJOR=$(echo "$VER" | cut -d. -f1)
+            MINOR=$(echo "$VER" | cut -d. -f2)
+            PATCH=$(echo "$VER" | cut -d. -f3)
+            NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "QA version: $NEXT"
+
+      - name: Build and push echo-server
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }} \
+            -t ${{ env.REGISTRY }}/echo-server:qa-latest \
+            apps/echo-server/
+          docker push ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}
+          docker push ${{ env.REGISTRY }}/echo-server:qa-latest
+
+      - name: Build and push E2E test image
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/echo-server-e2e:latest \
+            -f apps/echo-server/e2e/Dockerfile \
+            apps/echo-server/
+          docker push ${{ env.REGISTRY }}/echo-server-e2e:latest
+
+      - name: Tag git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "echo-server/v${{ steps.version.outputs.version }}"
+          git push origin "echo-server/v${{ steps.version.outputs.version }}"
+
+      - name: Summary
+        run: |
+          echo "### QA Build: echo-server" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Version:** \`${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image:** \`${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Kargo:** Warehouse will detect this tag and promote to dev → staging" >> "$GITHUB_STEP_SUMMARY"
+
+  qa-traffic-gen:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.traffic-gen == 'true'
+    runs-on: [self-hosted, arm64]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run vet
+        working-directory: apps/traffic-gen
+        run: go vet ./...
+
+      - name: Determine next QA version
+        id: version
+        run: |
+          LATEST=$(git tag -l 'traffic-gen/v*' --sort=-v:refname | head -1)
+          if [ -z "$LATEST" ]; then
+            NEXT="0.1.0"
+          else
+            VER="${LATEST#traffic-gen/v}"
+            MAJOR=$(echo "$VER" | cut -d. -f1)
+            MINOR=$(echo "$VER" | cut -d. -f2)
+            PATCH=$(echo "$VER" | cut -d. -f3)
+            NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "QA version: $NEXT"
+
+      - name: Build and push traffic-gen
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }} \
+            -t ${{ env.REGISTRY }}/traffic-gen:qa-latest \
+            apps/traffic-gen/
+          docker push ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }}
+          docker push ${{ env.REGISTRY }}/traffic-gen:qa-latest
+
+      - name: Tag git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "traffic-gen/v${{ steps.version.outputs.version }}"
+          git push origin "traffic-gen/v${{ steps.version.outputs.version }}"
+
+      - name: Summary
+        run: |
+          echo "### QA Build: traffic-gen" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Version:** \`${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image:** \`${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"

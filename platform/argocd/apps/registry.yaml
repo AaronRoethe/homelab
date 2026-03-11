@@ -1,11 +1,11 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root
+  name: registry
   namespace: argocd
   labels:
     homelab/tier: platform
-    homelab/app: argocd
+    homelab/app: registry
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -13,14 +13,16 @@ spec:
   source:
     # TODO: Update to your repo URL
     repoURL: https://github.com/aroethe/homelab
+    path: platform/registry/install
     targetRevision: main
-    path: platform/argocd/apps
     directory:
       recurse: false
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
+    namespace: infra
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -4,6 +4,9 @@ metadata:
   name: echo-server-prod
   namespace: argocd
   labels:
+    homelab/tier: app
+    homelab/app: echo-server
+    homelab/env: prod
     kargo.akuity.io/authorized-stage: echo-server:prod
   finalizers:
     - resources-finalizer.argocd.argoproj.io
