@@ -110,7 +110,7 @@ go test -v -race -count=1 ./...
 Expected:
 
 ```
-ok  github.com/aroethe/homelab/apps/echo-server/internal/handler  0.5s
+ok  github.com/AaronRoethe/homelab/apps/echo-server/internal/handler  0.5s
 ```
 
 ### E2E Tests

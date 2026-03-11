@@ -143,7 +143,7 @@ spec:
   project: default
   sources:
     # Source 1: base chart from app code
-    - repoURL: https://github.com/aroethe/homelab
+    - repoURL: https://github.com/AaronRoethe/homelab
       targetRevision: main
       path: apps/echo-server/chart
       helm:
@@ -151,7 +151,7 @@ spec:
           - $overlays/platform/overlays/echo-server/values-pi.yaml
           - $overlays/platform/overlays/echo-server/values-dev.yaml
     # Source 2: ref for overlay values files
-    - repoURL: https://github.com/aroethe/homelab
+    - repoURL: https://github.com/AaronRoethe/homelab
       targetRevision: main
       ref: overlays
   destination:
@@ -245,7 +245,7 @@ spec:
       steps:
         - uses: git-clone
           config:
-            repoURL: https://github.com/aroethe/homelab
+            repoURL: https://github.com/AaronRoethe/homelab
             checkout:
               - branch: main
                 path: ./src
@@ -270,7 +270,7 @@ spec:
             apps:
               - name: echo-server-dev
                 sources:
-                  - repoURL: https://github.com/aroethe/homelab
+                  - repoURL: https://github.com/AaronRoethe/homelab
                     desiredRevision: ${{ outputs.steps['git-push'].commit }}
 ```
 
@@ -319,7 +319,7 @@ spec:
       helm:
         valueFiles:
           - $values/platform/kargo/install/values.yaml
-    - repoURL: https://github.com/aroethe/homelab
+    - repoURL: https://github.com/AaronRoethe/homelab
       targetRevision: main
       ref: values
   destination:
@@ -378,7 +378,7 @@ Kargo needs write access to the repo to commit tag updates:
 kubectl create namespace echo-server
 
 kubectl -n echo-server create secret generic git-credentials \
-  --from-literal=repoURL=https://github.com/aroethe/homelab \
+  --from-literal=repoURL=https://github.com/AaronRoethe/homelab \
   --from-literal=username=aroethe \
   --from-literal=password=<GITHUB_PAT>
 

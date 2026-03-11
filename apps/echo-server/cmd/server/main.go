@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aroethe/homelab/apps/echo-server/internal/handler"
+	"github.com/AaronRoethe/homelab/apps/echo-server/internal/handler"
 )
 
 func main() {

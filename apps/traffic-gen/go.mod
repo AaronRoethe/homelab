@@ -1,3 +1,3 @@
-module github.com/aroethe/homelab/apps/traffic-gen
+module github.com/AaronRoethe/homelab/apps/traffic-gen
 
 go 1.22.0
