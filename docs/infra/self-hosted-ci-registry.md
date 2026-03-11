@@ -150,7 +150,7 @@ No QEMU. No cross-compilation. No internet roundtrip for images.
 | Setting              | Value                                        |
 | -------------------- | -------------------------------------------- |
 | Address (NodePort)   | `registry.homelab.local:30500`               |
-| Address (in-cluster) | `registry.registry.svc.cluster.local:5000`   |
+| Address (in-cluster) | `registry.infra.svc.cluster.local:5000`      |
 | Storage              | `/mnt/usb/registry` (hostPath)               |
 | TLS                  | None (insecure, local only)                  |
 | Auth                 | None (not exposed externally)                |
@@ -161,7 +161,7 @@ No QEMU. No cross-compilation. No internet roundtrip for images.
 Kargo and Helm charts use the in-cluster DNS so pods can pull images:
 
 ```
-registry.registry.svc.cluster.local:5000/echo-server:0.1.5
+registry.infra.svc.cluster.local:5000/echo-server:0.1.5
 ```
 
 The runner and `make` commands use the NodePort address:
@@ -212,5 +212,5 @@ du -sh /mnt/usb/registry/
 To garbage collect unused layers:
 
 ```sh
-kubectl exec -n registry deployment/registry -- registry garbage-collect /etc/docker/registry/config.yml
+kubectl exec -n infra deployment/registry -- registry garbage-collect /etc/docker/registry/config.yml
 ```

@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: registry.registry.svc.cluster.local:5000/echo-server
+  repository: registry.infra.svc.cluster.local:5000/echo-server
   tag: latest
   pullPolicy: IfNotPresent
 

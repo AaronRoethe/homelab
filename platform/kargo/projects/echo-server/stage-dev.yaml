@@ -27,7 +27,7 @@ spec:
           config:
             path: ./src/platform/overlays/echo-server/values-dev.yaml
             images:
-              - image: registry.registry.svc.cluster.local:5000/echo-server
+              - image: registry.infra.svc.cluster.local:5000/echo-server
                 key: image.tag
                 value: Tag
         - uses: git-commit

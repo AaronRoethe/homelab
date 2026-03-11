@@ -16,7 +16,7 @@ spec:
       recurse: false
   destination:
     server: https://kubernetes.default.svc
-    namespace: registry
+    namespace: infra
   syncPolicy:
     automated:
       prune: true

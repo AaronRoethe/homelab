@@ -17,7 +17,7 @@ spec:
                 restartPolicy: Never
                 containers:
                   - name: e2e
-                    image: registry.registry.svc.cluster.local:5000/echo-server-e2e:latest
+                    image: registry.infra.svc.cluster.local:5000/echo-server-e2e:latest
                     imagePullPolicy: Always
                     resources:
                       requests:

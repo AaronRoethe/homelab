@@ -6,6 +6,6 @@ mirrors:
   "registry.homelab.local:30500":
     endpoint:
       - "http://registry.homelab.local:30500"
-  "registry.registry.svc.cluster.local:5000":
+  "registry.infra.svc.cluster.local:5000":
     endpoint:
-      - "http://registry.registry.svc.cluster.local:5000"
+      - "http://registry.infra.svc.cluster.local:5000"

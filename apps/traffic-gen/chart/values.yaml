@@ -1,5 +1,5 @@
 image:
-  repository: registry.registry.svc.cluster.local:5000/traffic-gen
+  repository: registry.infra.svc.cluster.local:5000/traffic-gen
   tag: latest
   pullPolicy: IfNotPresent
 
