@@ -11,6 +11,9 @@ spec:
       sources:
         stages:
           - dev
+  verification:
+    analysisTemplates:
+      - name: echo-server-staging-verify
   promotionTemplate:
     spec:
       steps:

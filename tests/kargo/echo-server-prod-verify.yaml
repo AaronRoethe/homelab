@@ -1,0 +1,59 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: echo-server-prod-verify
+  namespace: echo-server
+spec:
+  metrics:
+    - name: canary-smoke
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            activeDeadlineSeconds: 60
+            ttlSecondsAfterFinished: 300
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: verify
+                    image: curlimages/curl:latest
+                    imagePullPolicy: IfNotPresent
+                    resources:
+                      requests:
+                        cpu: 5m
+                        memory: 8Mi
+                      limits:
+                        memory: 16Mi
+                    command: [sh, -c]
+                    args:
+                      - |
+                        set -e
+                        SVC="http://echo-server.prod.svc.cluster.local:80"
+
+                        echo "--- Waiting for traffic to settle ---"
+                        sleep 10
+
+                        echo "--- Health check ---"
+                        curl -sf --max-time 5 "$SVC/healthz" | grep -q '"status":"ok"'
+                        echo "PASS: /healthz"
+
+                        echo "--- Readiness check ---"
+                        curl -sf --max-time 5 "$SVC/ready" | grep -q '"status":"ok"'
+                        echo "PASS: /ready"
+
+                        echo "--- Functional check ---"
+                        RESP=$(curl -sf --max-time 5 "$SVC/")
+                        echo "$RESP" | grep -q '"hostname"'
+                        echo "$RESP" | grep -q '"arch"'
+                        echo "$RESP" | grep -q '"timestamp"'
+                        echo "PASS: / returns valid response"
+
+                        echo "--- Latency check (5 requests, all < 1s) ---"
+                        for i in 1 2 3 4 5; do
+                          TIME=$(curl -sf -o /dev/null -w "%{time_total}" --max-time 1 "$SVC/")
+                          echo "  Request $i: ${TIME}s"
+                        done
+                        echo "PASS: latency within bounds"
+
+                        echo "--- Prod gate passed ---"
