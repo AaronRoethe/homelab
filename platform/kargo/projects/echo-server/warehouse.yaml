@@ -6,6 +6,6 @@ metadata:
 spec:
   subscriptions:
     - image:
-        repoURL: ghcr.io/aroethe/homelab/echo-server
+        repoURL: registry.registry.svc.cluster.local:5000/echo-server
         semverConstraint: ">=0.1.0"
         discoveryLimit: 5

@@ -1,9 +1,9 @@
 name: Release
 
 # Cut a release manually or on a weekly schedule.
-# Bumps minor version by default, creates a GitHub Release with changelog,
-# builds ARM64 images, and pushes to GHCR.
-# Kargo picks up the new tag → flows through dev → staging → prod (manual approval).
+# Bumps version, creates a GitHub Release with changelog,
+# builds ARM64 images natively on the Pi, and pushes to the local registry.
+# Kargo picks up the new tag → dev → staging → prod (manual approval).
 
 on:
   workflow_dispatch:
@@ -30,17 +30,16 @@ on:
     - cron: "0 9 * * 1"
 
 env:
-  REGISTRY: ghcr.io/aroethe/homelab
+  REGISTRY: registry.homelab.local:30500
 
 jobs:
   release-echo-server:
     if: >
       (github.event_name == 'workflow_dispatch' && inputs.app == 'echo-server') ||
       github.event_name == 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, arm64]
     permissions:
       contents: write
-      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,41 +97,22 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Set up QEMU (for ARM64)
-        uses: docker/setup-qemu-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and push echo-server
-        uses: docker/build-push-action@v6
-        with:
-          context: apps/echo-server
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/echo-server:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }} \
+            -t ${{ env.REGISTRY }}/echo-server:latest \
+            apps/echo-server/
+          docker push ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}
+          docker push ${{ env.REGISTRY }}/echo-server:latest
 
       - name: Build and push E2E test image
-        uses: docker/build-push-action@v6
-        with:
-          context: apps/echo-server
-          file: apps/echo-server/e2e/Dockerfile
-          platforms: linux/arm64
-          push: true
-          tags: ${{ env.REGISTRY }}/echo-server-e2e:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/echo-server-e2e:latest \
+            -f apps/echo-server/e2e/Dockerfile \
+            apps/echo-server/
+          docker push ${{ env.REGISTRY }}/echo-server-e2e:latest
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -160,10 +140,9 @@ jobs:
   release-traffic-gen:
     if: >
       github.event_name == 'workflow_dispatch' && inputs.app == 'traffic-gen'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, arm64]
     permissions:
       contents: write
-      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -221,30 +200,14 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Set up QEMU (for ARM64)
-        uses: docker/setup-qemu-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and push traffic-gen
-        uses: docker/build-push-action@v6
-        with:
-          context: apps/traffic-gen
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/traffic-gen:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }} \
+            -t ${{ env.REGISTRY }}/traffic-gen:latest \
+            apps/traffic-gen/
+          docker push ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }}
+          docker push ${{ env.REGISTRY }}/traffic-gen:latest
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

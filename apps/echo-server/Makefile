@@ -1,4 +1,4 @@
-REGISTRY ?= ghcr.io/aroethe/homelab
+REGISTRY ?= registry.homelab.local:30500
 IMAGE := $(REGISTRY)/echo-server
 E2E_IMAGE := $(REGISTRY)/echo-server-e2e
 TAG ?= latest

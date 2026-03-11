@@ -1,4 +1,4 @@
-REGISTRY ?= ghcr.io/aroethe/homelab
+REGISTRY ?= registry.homelab.local:30500
 IMAGE := $(REGISTRY)/traffic-gen
 TAG ?= latest
 

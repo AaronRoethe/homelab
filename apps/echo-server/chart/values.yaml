@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/aroethe/homelab/echo-server
+  repository: registry.registry.svc.cluster.local:5000/echo-server
   tag: latest
   pullPolicy: IfNotPresent
 

@@ -1,7 +1,8 @@
 name: QA Build
 
 # Triggers on every merge to master. Detects which apps changed,
-# bumps the patch version, builds ARM64 images, and pushes to GHCR.
+# bumps the patch version, builds ARM64 images natively on the Pi,
+# and pushes to the local registry.
 # Kargo Warehouse picks up the new tag and promotes through dev → staging.
 
 on:
@@ -11,7 +12,7 @@ on:
       - "apps/**"
 
 env:
-  REGISTRY: ghcr.io/aroethe/homelab
+  REGISTRY: registry.homelab.local:30500
 
 jobs:
   detect-changes:
@@ -33,10 +34,9 @@ jobs:
   qa-echo-server:
     needs: detect-changes
     if: needs.detect-changes.outputs.echo-server == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, arm64]
     permissions:
       contents: write
-      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,12 +53,10 @@ jobs:
       - name: Determine next QA version
         id: version
         run: |
-          # Find latest echo-server tag, bump patch
           LATEST=$(git tag -l 'echo-server/v*' --sort=-v:refname | head -1)
           if [ -z "$LATEST" ]; then
             NEXT="0.1.0"
           else
-            # Strip prefix: echo-server/v0.1.2 → 0.1.2
             VER="${LATEST#echo-server/v}"
             MAJOR=$(echo "$VER" | cut -d. -f1)
             MINOR=$(echo "$VER" | cut -d. -f2)
@@ -68,30 +66,22 @@ jobs:
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
           echo "QA version: $NEXT"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Set up QEMU (for ARM64)
-        uses: docker/setup-qemu-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and push echo-server
-        uses: docker/build-push-action@v6
-        with:
-          context: apps/echo-server
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/echo-server:qa-latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }} \
+            -t ${{ env.REGISTRY }}/echo-server:qa-latest \
+            apps/echo-server/
+          docker push ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}
+          docker push ${{ env.REGISTRY }}/echo-server:qa-latest
+
+      - name: Build and push E2E test image
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/echo-server-e2e:latest \
+            -f apps/echo-server/e2e/Dockerfile \
+            apps/echo-server/
+          docker push ${{ env.REGISTRY }}/echo-server-e2e:latest
 
       - name: Tag git
         run: |
@@ -111,10 +101,9 @@ jobs:
   qa-traffic-gen:
     needs: detect-changes
     if: needs.detect-changes.outputs.traffic-gen == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, arm64]
     permissions:
       contents: write
-      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -144,30 +133,14 @@ jobs:
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
           echo "QA version: $NEXT"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Set up QEMU (for ARM64)
-        uses: docker/setup-qemu-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and push traffic-gen
-        uses: docker/build-push-action@v6
-        with:
-          context: apps/traffic-gen
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/traffic-gen:qa-latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }} \
+            -t ${{ env.REGISTRY }}/traffic-gen:qa-latest \
+            apps/traffic-gen/
+          docker push ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }}
+          docker push ${{ env.REGISTRY }}/traffic-gen:qa-latest
 
       - name: Tag git
         run: |
@@ -182,36 +155,3 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Version:** \`${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Image:** \`${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
-
-  qa-e2e-image:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.echo-server == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Set up QEMU (for ARM64)
-        uses: docker/setup-qemu-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push E2E test image
-        uses: docker/build-push-action@v6
-        with:
-          context: apps/echo-server
-          file: apps/echo-server/e2e/Dockerfile
-          platforms: linux/arm64
-          push: true
-          tags: ${{ env.REGISTRY }}/echo-server-e2e:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max

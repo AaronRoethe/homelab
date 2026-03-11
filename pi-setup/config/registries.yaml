@@ -1,0 +1,11 @@
+# k3s registry mirror configuration
+# Install to: /etc/rancher/k3s/registries.yaml
+# Then restart k3s: sudo systemctl restart k3s
+
+mirrors:
+  "registry.homelab.local:30500":
+    endpoint:
+      - "http://registry.homelab.local:30500"
+  "registry.registry.svc.cluster.local:5000":
+    endpoint:
+      - "http://registry.registry.svc.cluster.local:5000"
