@@ -6,10 +6,10 @@ TAG ?= latest
 .PHONY: build run test vet docker-build docker-push e2e-build e2e-push
 
 build: ## Build the binary locally
-	go build -o echo-server ./cmd/server
+	go build -o bin/echo-server ./cmd/server
 
 run: build ## Run locally
-	./echo-server
+	./bin/echo-server
 
 test: ## Run unit tests with race detection
 	go test -race -count=1 ./...

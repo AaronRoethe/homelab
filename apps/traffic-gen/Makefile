@@ -5,10 +5,10 @@ TAG ?= latest
 .PHONY: build run test docker-build docker-push
 
 build: ## Build the binary locally
-	go build -o traffic-gen ./cmd/traffic-gen
+	go build -o bin/traffic-gen ./cmd/traffic-gen
 
 run: build ## Run locally against a target
-	TARGET_URL=http://localhost:8080 REQUESTS=10 CONCURRENCY=2 DELAY_MS=200 ./traffic-gen
+	TARGET_URL=http://localhost:8080 REQUESTS=10 CONCURRENCY=2 DELAY_MS=200 ./bin/traffic-gen
 
 test: ## Run tests
 	go test ./...
