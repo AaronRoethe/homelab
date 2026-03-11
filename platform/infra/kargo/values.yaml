@@ -1,9 +1,8 @@
 api:
   adminAccount:
     enabled: true
-    # Generate with: openssl rand -base64 32
-    # Set via --set or override in a local values file not committed to git
-    tokenSigningKey: ""
+    passwordHash: "$2y$10$SYnhoOjBxdnyEhHSLuFR8uOtFfTxhElgL/zjtUc3tPaZqcpmBwhGC"
+    tokenSigningKey: "9gwWKPKj+v+OUKSaw2bnMc6xXhXWJqHpm6BauYLGsLU="
   service:
     type: NodePort
     nodePort: 30081
