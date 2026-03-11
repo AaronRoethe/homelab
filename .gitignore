@@ -1,0 +1,34 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+apps/echo-server/server
+
+# Go
+vendor/
+
+# Docker
+.docker/
+
+# Kubernetes
+*.kubeconfig
+kubeconfig*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets - never commit these
+*.pem
+*.key
+.env
+.env.*
+secrets/

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: echo-server
+description: A simple Go HTTP echo service for homelab
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

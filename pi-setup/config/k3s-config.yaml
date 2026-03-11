@@ -1,0 +1,22 @@
+# k3s server configuration
+# Docs: https://docs.k3s.io/installation/configuration
+
+write-kubeconfig-mode: "0644"
+
+# Keep Traefik (lightweight ingress, included in k3s)
+# Keep servicelb (simple load balancer for single-node)
+# Disable local-storage (use hostPath or Longhorn later)
+disable:
+  - local-storage
+
+# API server tuning for limited resources
+kube-apiserver-arg:
+  - "max-requests-inflight=100"
+  - "max-mutating-requests-inflight=50"
+
+# Kubelet tuning for Pi
+kubelet-arg:
+  - "max-pods=50"
+  - "system-reserved=cpu=200m,memory=256Mi"
+  - "kube-reserved=cpu=200m,memory=256Mi"
+  - "eviction-hard=memory.available<200Mi,nodefs.available<10%"

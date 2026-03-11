@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  # Disable dex (using local accounts only, saves ~100MB RAM)
+  dex.config: ""
+  # Admin account can create API keys and login
+  accounts.admin: apiKey, login
