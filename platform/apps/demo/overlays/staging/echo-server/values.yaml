@@ -1,5 +1,0 @@
-image:
-  tag: "0.1.0"
-
-ingress:
-  host: echo-staging.homelab.local

@@ -1,6 +1,0 @@
-image:
-  tag: latest
-  pullPolicy: Always
-
-ingress:
-  host: echo-dev.homelab.local

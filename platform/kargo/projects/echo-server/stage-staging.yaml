@@ -23,14 +23,13 @@ spec:
             checkout:
               - branch: main
                 path: ./src
-        - uses: helm-update-image
+        - uses: yaml-update
           as: update-image
           config:
-            path: ./src/platform/apps/demo/overlays/staging/echo-server/values.yaml
-            images:
-              - image: registry.infra.svc.cluster.local:5000/echo-server
-                key: image.tag
-                value: Tag
+            path: ./src/platform/apps/demo/staging/echo-server.yaml
+            updates:
+              - key: spec.source.helm.valuesObject.image.tag
+                value: ${{ imageFrom("registry.infra.svc.cluster.local:5000/echo-server").Tag }}
         - uses: git-commit
           config:
             path: ./src

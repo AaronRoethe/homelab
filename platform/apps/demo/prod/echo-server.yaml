@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: echo-server-prod
+  namespace: argocd
+  labels:
+    homelab/tier: app
+    homelab/app: echo-server
+    homelab/project: demo
+    homelab/env: prod
+    kargo.akuity.io/authorized-stage: echo-server:prod
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/aroethe/homelab
+    targetRevision: main
+    path: apps/echo-server/chart
+    helm:
+      releaseName: echo-server
+      valuesObject:
+        image:
+          tag: "0.1.0"
+        ingress:
+          host: echo.homelab.local
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

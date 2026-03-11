@@ -17,7 +17,6 @@ spec:
     path: platform/apps
     directory:
       recurse: true
-      exclude: "demo/base/**|demo/overlays/**"
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
