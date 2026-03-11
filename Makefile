@@ -1,7 +1,8 @@
-.PHONY: help pi-setup argocd-install argocd-bootstrap echo-build echo-push
+.PHONY: help pi-setup argocd-install argocd-bootstrap cert-manager-install kargo-projects echo-build echo-push echo-release
 
 REGISTRY ?= ghcr.io/aroethe/homelab
 PI_HOST ?= homelab.local
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0")
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -22,10 +23,26 @@ argocd-password: ## Get ArgoCD initial admin password
 argocd-bootstrap: ## Apply the root app-of-apps
 	kubectl apply -f platform/argocd/apps/root-app.yaml
 
+cert-manager-install: ## Install cert-manager (Kargo prerequisite)
+	kubectl apply -k platform/cert-manager/install/
+
+kargo-projects: ## Apply Kargo project, warehouse, and stages for echo-server
+	kubectl apply -f platform/kargo/projects/echo-server/project.yaml
+	@echo "Waiting for project namespace..."
+	@sleep 5
+	kubectl apply -f platform/kargo/projects/echo-server/
+
 ## --- Apps ---
 
 echo-build: ## Build echo-server container (ARM64)
 	cd apps/echo-server && docker buildx build --platform linux/arm64 -t $(REGISTRY)/echo-server:latest .
 
-echo-push: ## Build and push echo-server container (ARM64)
+echo-push: ## Build and push echo-server container (ARM64, latest)
 	cd apps/echo-server && docker buildx build --platform linux/arm64 -t $(REGISTRY)/echo-server:latest --push .
+
+echo-release: ## Build and push with semver tag (VERSION=0.1.0)
+	@echo "Building and pushing echo-server:$(VERSION)"
+	cd apps/echo-server && docker buildx build --platform linux/arm64 \
+		-t $(REGISTRY)/echo-server:$(VERSION) \
+		-t $(REGISTRY)/echo-server:latest \
+		--push .

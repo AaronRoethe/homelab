@@ -1,6 +1,7 @@
 # Homelab
 
-Kubernetes homelab running on a single Raspberry Pi (8GB), managed via GitOps with ArgoCD.
+Kubernetes homelab running on a single Raspberry Pi (8GB), managed via GitOps
+with ArgoCD and Kargo for progressive delivery.
 
 ## Architecture
 
@@ -10,64 +11,92 @@ Kubernetes homelab running on a single Raspberry Pi (8GB), managed via GitOps wi
                   │  (this repo) │
                   └──────┬───────┘
                          │ git poll
-                  ┌──────▼───────┐
-                  │   ArgoCD     │
-                  │  (app-of-apps)│
-                  └──────┬───────┘
-                         │ sync
               ┌──────────┼──────────┐
-              ▼          ▼          ▼
-         ┌─────────┐ ┌────────┐ ┌────────┐
-         │ echo-   │ │ app-2  │ │ app-N  │
-         │ server  │ │(future)│ │(future)│
-         └─────────┘ └────────┘ └────────┘
-                         │
-                  ┌──────▼───────┐
-                  │  k3s on Pi   │
-                  │  + Traefik   │
-                  └──────────────┘
+              ▼                     ▼
+       ┌──────────┐         ┌──────────┐
+       │  ArgoCD  │◀────────│  Kargo   │
+       │ (sync)   │ trigger │(promote) │
+       └──────┬───┘         └──────────┘
+              │ deploy
+    ┌─────────┼─────────┐
+    ▼         ▼         ▼
+  ns:dev   ns:staging  ns:prod
+  (auto)   (auto)      (manual)
+              │
+       ┌──────▼───────┐
+       │  k3s on Pi   │
+       │  + Traefik   │
+       └──────────────┘
 ```
 
 ## Stack
 
-| Component         | Choice                                 | Why                                  |
-| ----------------- | -------------------------------------- | ------------------------------------ |
-| OS                | Raspberry Pi OS Lite 64-bit (Bookworm) | Headless, minimal footprint          |
-| Kubernetes        | k3s                                    | Built for ARM, ~500MB RAM            |
-| GitOps            | ArgoCD                                 | UI for learning, app-of-apps pattern |
-| Ingress           | Traefik                                | Included in k3s, zero extra cost     |
-| Charts            | Helm                                   | Flexible per-app configuration       |
-| Container runtime | containerd                             | Default in k3s                       |
+| Component         | Choice                                 | Why                                        |
+| ----------------- | -------------------------------------- | ------------------------------------------ |
+| OS                | Raspberry Pi OS Lite 64-bit (Bookworm) | Headless, minimal footprint                |
+| Kubernetes        | k3s                                    | Built for ARM, ~500MB RAM                  |
+| GitOps            | ArgoCD                                 | UI for learning, app-of-apps pattern       |
+| Promotion         | Kargo                                  | Progressive delivery: dev → staging → prod |
+| Ingress           | Traefik                                | Included in k3s, zero extra cost           |
+| Charts            | Helm                                   | Flexible per-app configuration             |
+| Container runtime | containerd                             | Default in k3s                             |
 
 ## Resource Budget (8GB Pi)
 
-| Component            | RAM               |
-| -------------------- | ----------------- |
-| OS + system          | ~400 MB           |
-| k3s (server + agent) | ~500 MB           |
-| ArgoCD (tuned)       | ~400 MB           |
-| Traefik + CoreDNS    | ~80 MB            |
-| Your workloads       | ~5.5 GB available |
+| Component            | RAM         |
+| -------------------- | ----------- |
+| OS + system          | ~400 MB     |
+| k3s (server + agent) | ~500 MB     |
+| ArgoCD (tuned)       | ~400 MB     |
+| cert-manager         | ~200 MB     |
+| Kargo (tuned)        | ~400 MB     |
+| Traefik + CoreDNS    | ~80 MB      |
+| Workloads (3 envs)   | ~100 MB     |
+| **Remaining**        | **~5.9 GB** |
 
 ## Repo Structure
 
 ```
 homelab/
-├── pi-setup/         # Bootstrap: Pi OS → running k3s cluster
-├── platform/         # Cluster infrastructure (ArgoCD, future platform services)
-│   └── argocd/
-│       ├── install/  # Kustomize overlay on upstream ArgoCD manifests
-│       └── apps/     # App-of-apps: one Application YAML per workload
-├── apps/             # Application source code
-│   └── echo-server/  # Starter Go service
-├── charts/           # Helm charts (one per app)
+├── apps/                          # Application source code + charts
 │   └── echo-server/
-└── docs/             # ADRs and runbooks
+│       ├── cmd/server/main.go     # App code
+│       ├── Dockerfile
+│       └── chart/                 # Base Helm chart (travels with the app)
+│           ├── Chart.yaml
+│           ├── values.yaml        # Defaults only
+│           └── templates/
+│
+├── platform/                      # All infrastructure concerns
+│   ├── argocd/
+│   │   ├── install/               # Kustomize overlay on upstream manifests
+│   │   └── apps/                  # App-of-apps: ArgoCD Application per workload
+│   ├── cert-manager/
+│   │   └── install/               # Kustomize + Pi resource limits
+│   ├── kargo/
+│   │   ├── install/               # Helm values for Kargo (Pi-tuned)
+│   │   └── projects/              # Kargo Project, Warehouse, Stages per app
+│   ├── environments/              # Namespace + ResourceQuota per env
+│   │   ├── dev/
+│   │   ├── staging/
+│   │   └── prod/
+│   └── overlays/                  # Per-env Helm value overrides
+│       └── echo-server/
+│           ├── values-pi.yaml
+│           ├── values-dev.yaml
+│           ├── values-staging.yaml
+│           └── values-prod.yaml
+│
+├── pi-setup/                      # Bootstrap: Pi OS → running k3s
+│
+└── docs/                          # Plans and runbooks
+    └── infra/
 ```
 
-This is a monorepo. Each top-level directory is a self-contained concern that can be
-split into its own repo later. The only coupling is ArgoCD Application manifests
-pointing at paths — update `repoURL` and `path` when you split.
+**Separation of concerns**: `apps/` contains application code and its base chart —
+everything a dev team owns. `platform/` contains infrastructure: ArgoCD, Kargo,
+environments, and deployment overlays — everything an ops team owns. `pi-setup/`
+is hardware provisioning. Each can become its own repo later.
 
 ## Getting Started
 
@@ -78,13 +107,6 @@ pointing at paths — update `repoURL` and `path` when you split.
 3. SSH in and run the setup scripts:
 
 ```sh
-# On the Pi
-curl -sfL https://raw.githubusercontent.com/<you>/homelab/main/pi-setup/install.sh | bash
-```
-
-Or clone the repo and run locally:
-
-```sh
 git clone https://github.com/<you>/homelab.git
 cd homelab/pi-setup
 ./install.sh
@@ -92,49 +114,54 @@ cd homelab/pi-setup
 
 See [pi-setup/README.md](pi-setup/README.md) for details.
 
-### Phase 2: Install ArgoCD
+### Phase 2: Install Platform
 
 From your local machine (with kubeconfig pointing at the Pi):
 
 ```sh
-kubectl apply -k platform/argocd/install/
+make argocd-install          # Install ArgoCD
+make argocd-password         # Get initial admin password
+make argocd-bootstrap        # Apply root app-of-apps
 ```
 
-Wait for ArgoCD to be ready, then get the initial admin password:
+ArgoCD auto-discovers and syncs cert-manager, Kargo, environments, and all
+app deployments from the `platform/argocd/apps/` directory.
+
+### Phase 3: Configure Kargo
 
 ```sh
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+# Create git credentials (Kargo needs repo write access for tag promotions)
+kubectl create namespace echo-server
+kubectl -n echo-server create secret generic git-credentials \
+  --from-literal=repoURL=https://github.com/<you>/homelab \
+  --from-literal=username=<you> \
+  --from-literal=password=<GITHUB_PAT>
+kubectl -n echo-server label secret git-credentials kargo.akuity.io/cred-type=git
+
+# Apply Kargo project and stages
+make kargo-projects
 ```
 
-Access the UI at `http://<pi-ip>:30080`.
-
-### Phase 3: Deploy the App-of-Apps
+### Phase 4: Deploy
 
 ```sh
-kubectl apply -f platform/argocd/apps/root-app.yaml
+make echo-release VERSION=0.1.0    # Build + push semver-tagged ARM64 image
 ```
 
-ArgoCD now manages itself. Push changes to `main` and ArgoCD syncs automatically.
-
-### Phase 4: Build and Deploy the Echo Server
-
-```sh
-cd apps/echo-server
-make build-push   # builds ARM64 image, pushes to registry
-```
-
-ArgoCD picks up the chart and deploys it. Verify:
-
-```sh
-curl http://echo.homelab.local/
-```
+Kargo detects the new tag and promotes automatically:
+`dev (auto) → staging (auto) → prod (manual approval in Kargo UI)`
 
 ## Adding a New Application
 
-1. Create app source code in `apps/<name>/`
-2. Create a Helm chart in `charts/<name>/`
-3. Add an ArgoCD Application manifest in `platform/argocd/apps/<name>.yaml`
-4. Push to `main` — ArgoCD deploys it
+1. Create app code + base chart in `apps/<name>/` with `apps/<name>/chart/`
+2. Create env overlays in `platform/overlays/<name>/`
+3. Add per-env ArgoCD Applications in `platform/argocd/apps/`
+4. Add Kargo Project + Warehouse + Stages in `platform/kargo/projects/<name>/`
+5. Push to `main` — Kargo and ArgoCD handle the rest
+
+## Docs
+
+- [Multi-Environment Deployment Plan](docs/infra/multi-environment-deployment.md)
 
 ## Future Plans
 
