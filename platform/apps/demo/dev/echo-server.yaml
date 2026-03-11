@@ -8,6 +8,7 @@ metadata:
     homelab/app: echo-server
     homelab/project: demo
     homelab/env: dev
+  annotations:
     kargo.akuity.io/authorized-stage: echo-server:dev
   finalizers:
     - resources-finalizer.argocd.argoproj.io
