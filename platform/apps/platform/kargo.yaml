@@ -16,9 +16,9 @@ spec:
       chart: kargo
       helm:
         valueFiles:
-          - $values/platform/kargo/install/values.yaml
-    - repoURL: https://github.com/aroethe/homelab
-      targetRevision: main
+          - $values/platform/infra/kargo/values.yaml
+    - repoURL: https://github.com/AaronRoethe/homelab
+      targetRevision: master
       ref: values
   destination:
     server: https://kubernetes.default.svc

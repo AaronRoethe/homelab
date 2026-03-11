@@ -12,3 +12,4 @@ patches:
   - path: patches/argocd-cmd-params.yaml
   - path: patches/resource-limits.yaml
   - path: patches/disable-dex.yaml
+  - path: patches/argocd-server-svc.yaml

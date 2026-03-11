@@ -6,25 +6,24 @@ metadata:
   labels:
     homelab/tier: app
     homelab/app: echo-server
+    homelab/project: demo
     homelab/env: staging
     kargo.akuity.io/authorized-stage: echo-server:staging
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  sources:
-    # Base chart from app repo
-    - repoURL: https://github.com/aroethe/homelab
-      targetRevision: main
-      path: apps/echo-server/chart
-      helm:
-        valueFiles:
-          - $overlays/platform/overlays/echo-server/values-pi.yaml
-          - $overlays/platform/overlays/echo-server/values-staging.yaml
-    # Overlay values from platform
-    - repoURL: https://github.com/aroethe/homelab
-      targetRevision: main
-      ref: overlays
+  source:
+    repoURL: https://github.com/AaronRoethe/homelab
+    targetRevision: master
+    path: apps/echo-server/chart
+    helm:
+      releaseName: echo-server
+      valuesObject:
+        image:
+          tag: "0.1.0"
+        ingress:
+          host: echo-staging.homelab.local
   destination:
     server: https://kubernetes.default.svc
     namespace: staging

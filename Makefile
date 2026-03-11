@@ -7,6 +7,20 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
+## --- Local Cluster ---
+
+cluster-create: ## Create local k3d cluster with registry
+	./scripts/local-cluster.sh create
+
+cluster-delete: ## Delete local k3d cluster
+	./scripts/local-cluster.sh delete
+
+cluster-bootstrap: ## Install ArgoCD and apply root app
+	./scripts/local-cluster.sh bootstrap
+
+cluster-status: ## Show local cluster status
+	./scripts/local-cluster.sh status
+
 ## --- Pi Setup ---
 
 pi-setup: ## Run full Pi bootstrap (SSH into Pi first)

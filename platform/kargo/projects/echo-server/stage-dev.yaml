@@ -18,18 +18,17 @@ spec:
       steps:
         - uses: git-clone
           config:
-            repoURL: https://github.com/aroethe/homelab
+            repoURL: https://github.com/AaronRoethe/homelab
             checkout:
-              - branch: main
+              - branch: master
                 path: ./src
-        - uses: helm-update-image
+        - uses: yaml-update
           as: update-image
           config:
-            path: ./src/platform/overlays/echo-server/values-dev.yaml
-            images:
-              - image: registry.infra.svc.cluster.local:5000/echo-server
-                key: image.tag
-                value: Tag
+            path: ./src/platform/apps/demo/dev/echo-server.yaml
+            updates:
+              - key: spec.source.helm.valuesObject.image.tag
+                value: ${{ imageFrom("registry.infra.svc.cluster.local:5000/echo-server").Tag }}
         - uses: git-commit
           config:
             path: ./src
@@ -43,5 +42,5 @@ spec:
             apps:
               - name: echo-server-dev
                 sources:
-                  - repoURL: https://github.com/aroethe/homelab
+                  - repoURL: https://github.com/AaronRoethe/homelab
                     desiredRevision: ${{ outputs.steps['git-push'].commit }}

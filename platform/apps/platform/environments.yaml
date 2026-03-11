@@ -1,25 +1,23 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root
+  name: environments
   namespace: argocd
   labels:
     homelab/tier: platform
-    homelab/app: argocd
+    homelab/app: environments
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    # TODO: Update to your repo URL
-    repoURL: https://github.com/aroethe/homelab
-    targetRevision: main
-    path: platform/argocd/apps
+    repoURL: https://github.com/AaronRoethe/homelab
+    path: platform/environments
+    targetRevision: master
     directory:
-      recurse: false
+      recurse: true
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
   syncPolicy:
     automated:
       prune: true

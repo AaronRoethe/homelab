@@ -1,25 +1,25 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: environments
+  name: cert-manager
   namespace: argocd
   labels:
     homelab/tier: platform
-    homelab/app: environments
+    homelab/app: cert-manager
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    # TODO: Update to your repo URL
-    repoURL: https://github.com/aroethe/homelab
-    path: platform/environments
-    targetRevision: main
-    directory:
-      recurse: true
+    repoURL: https://github.com/AaronRoethe/homelab
+    path: platform/infra/cert-manager
+    targetRevision: master
   destination:
     server: https://kubernetes.default.svc
+    namespace: cert-manager
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
