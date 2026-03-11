@@ -22,7 +22,8 @@ spec:
       releaseName: echo-server
       valuesObject:
         image:
-          tag: latest
+          repository: k3d-registry.homelab.local:30500/echo-server
+          tag: "0.1.0"
           pullPolicy: Always
         ingress:
           host: echo-dev.homelab.local
