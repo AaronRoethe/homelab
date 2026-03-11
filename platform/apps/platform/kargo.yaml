@@ -16,7 +16,7 @@ spec:
       chart: kargo
       helm:
         valueFiles:
-          - $values/platform/base/kargo/values.yaml
+          - $values/platform/infra/kargo/values.yaml
     - repoURL: https://github.com/aroethe/homelab
       targetRevision: main
       ref: values

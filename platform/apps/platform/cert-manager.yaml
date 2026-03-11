@@ -13,7 +13,7 @@ spec:
   source:
     # TODO: Update to your repo URL
     repoURL: https://github.com/aroethe/homelab
-    path: platform/base/cert-manager
+    path: platform/infra/cert-manager
     targetRevision: main
   destination:
     server: https://kubernetes.default.svc

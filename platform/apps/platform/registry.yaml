@@ -13,7 +13,7 @@ spec:
   source:
     # TODO: Update to your repo URL
     repoURL: https://github.com/aroethe/homelab
-    path: platform/base/registry
+    path: platform/infra/registry
     targetRevision: main
     directory:
       recurse: false
