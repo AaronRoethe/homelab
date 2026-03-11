@@ -1,16 +1,57 @@
 # Local Development
 
-Run and test the homelab services on your local machine without a Kubernetes cluster.
+Run and test the homelab services on your local machine — either standalone
+(Go binaries) or on a full local k3d cluster that mirrors the Pi setup.
 
 ## Prerequisites
 
-| Tool              | Install                                        | Verify           |
-| ----------------- | ---------------------------------------------- | ---------------- |
-| Go 1.22+          | `brew install go`                              | `go version`     |
-| Helm              | `brew install helm`                            | `helm version`   |
-| Docker (optional) | Docker Desktop or `brew install --cask docker` | `docker version` |
+| Tool     | Install                    | Verify            |
+| -------- | -------------------------- | ----------------- |
+| Go 1.22+ | `brew install go`          | `go version`      |
+| Helm     | `brew install helm`        | `helm version`    |
+| Docker   | Docker Desktop or OrbStack | `docker version`  |
+| k3d      | `brew install k3d`         | `k3d version`     |
+| kubectl  | `brew install kubectl`     | `kubectl version` |
 
-## Quick Start
+## Local Cluster (full stack)
+
+Spin up a local k3d cluster with ArgoCD, Kargo, registry — everything
+that runs on the Pi, running on your Mac.
+
+```sh
+# Create cluster + registry
+./scripts/local-cluster.sh create
+
+# Install ArgoCD + apply app-of-apps
+./scripts/local-cluster.sh bootstrap
+
+# Check status
+./scripts/local-cluster.sh status
+```
+
+ArgoCD UI at `http://localhost:30080` — credentials printed by bootstrap.
+
+ArgoCD auto-syncs all apps from `platform/apps/`. Push an image to the
+local registry and Kargo promotes it through dev → staging → prod:
+
+```sh
+# Build and push to local registry
+cd apps/echo-server
+docker build -t k3d-registry.homelab.local:30500/echo-server:0.1.0 .
+docker push k3d-registry.homelab.local:30500/echo-server:0.1.0
+```
+
+To tear it all down:
+
+```sh
+./scripts/local-cluster.sh delete
+```
+
+## Standalone (no cluster)
+
+Run the Go services directly for fast iteration without Kubernetes.
+
+### Quick Start
 
 Open two terminal windows:
 
