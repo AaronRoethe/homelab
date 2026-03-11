@@ -26,7 +26,7 @@ spec:
         - uses: helm-update-image
           as: update-image
           config:
-            path: ./src/platform/overlays/echo-server/values-staging.yaml
+            path: ./src/platform/apps/demo/overlays/staging/echo-server/values.yaml
             images:
               - image: registry.infra.svc.cluster.local:5000/echo-server
                 key: image.tag

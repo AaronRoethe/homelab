@@ -1,28 +1,23 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: kargo
+  name: cert-manager
   namespace: argocd
   labels:
     homelab/tier: platform
-    homelab/app: kargo
+    homelab/app: cert-manager
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  sources:
-    - repoURL: oci://ghcr.io/akuity/kargo-charts/kargo
-      targetRevision: "1.3.1"
-      chart: kargo
-      helm:
-        valueFiles:
-          - $values/platform/kargo/install/values.yaml
-    - repoURL: https://github.com/aroethe/homelab
-      targetRevision: main
-      ref: values
+  source:
+    # TODO: Update to your repo URL
+    repoURL: https://github.com/aroethe/homelab
+    path: platform/base/cert-manager
+    targetRevision: main
   destination:
     server: https://kubernetes.default.svc
-    namespace: kargo
+    namespace: cert-manager
   syncPolicy:
     automated:
       prune: true

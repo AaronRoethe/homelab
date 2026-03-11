@@ -1,0 +1,5 @@
+image:
+  tag: "0.1.0"
+
+ingress:
+  host: echo.homelab.local

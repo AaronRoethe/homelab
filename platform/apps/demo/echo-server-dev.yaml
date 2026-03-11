@@ -1,22 +1,17 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: root
+  name: demo-echo-server-dev
   namespace: argocd
   labels:
-    homelab/tier: platform
-    homelab/app: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
+    homelab/tier: app
+    homelab/project: demo
 spec:
   project: default
   source:
-    # TODO: Update to your repo URL
     repoURL: https://github.com/aroethe/homelab
     targetRevision: main
-    path: platform/argocd/apps
-    directory:
-      recurse: false
+    path: platform/apps/demo/overlays/dev/echo-server
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../base/echo-server
+namePrefix: ""
+nameSuffix: -staging
+patches:
+  - target:
+      kind: Application
+      name: echo-server
+    patch: |
+      - op: add
+        path: /metadata/labels/homelab~1env
+        value: staging
+      - op: add
+        path: /metadata/labels/kargo.akuity.io~1authorized-stage
+        value: echo-server:staging
+      - op: replace
+        path: /spec/sources/0/helm/valueFiles
+        value:
+          - $overlays/platform/apps/demo/overlays/staging/echo-server/values.yaml
+      - op: replace
+        path: /spec/destination/namespace
+        value: staging

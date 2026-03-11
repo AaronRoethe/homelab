@@ -1,33 +1,29 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: echo-server-prod
+  name: echo-server
   namespace: argocd
   labels:
     homelab/tier: app
     homelab/app: echo-server
-    homelab/env: prod
-    kargo.akuity.io/authorized-stage: echo-server:prod
+    homelab/project: demo
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   sources:
-    # Base chart from app repo
     - repoURL: https://github.com/aroethe/homelab
       targetRevision: main
       path: apps/echo-server/chart
       helm:
         valueFiles:
-          - $overlays/platform/overlays/echo-server/values-pi.yaml
-          - $overlays/platform/overlays/echo-server/values-prod.yaml
-    # Overlay values from platform
+          - $overlays/platform/apps/demo/overlays/dev/echo-server/values.yaml
     - repoURL: https://github.com/aroethe/homelab
       targetRevision: main
       ref: overlays
   destination:
     server: https://kubernetes.default.svc
-    namespace: prod
+    namespace: dev
   syncPolicy:
     automated:
       prune: true
