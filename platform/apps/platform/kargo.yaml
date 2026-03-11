@@ -18,7 +18,7 @@ spec:
         valueFiles:
           - $values/platform/infra/kargo/values.yaml
     - repoURL: https://github.com/AaronRoethe/homelab
-      targetRevision: main
+      targetRevision: master
       ref: values
   destination:
     server: https://kubernetes.default.svc

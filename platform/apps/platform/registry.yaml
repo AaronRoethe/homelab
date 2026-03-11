@@ -13,7 +13,7 @@ spec:
   source:
     repoURL: https://github.com/AaronRoethe/homelab
     path: platform/infra/registry
-    targetRevision: main
+    targetRevision: master
     directory:
       recurse: false
   destination:

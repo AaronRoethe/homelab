@@ -12,7 +12,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/AaronRoethe/homelab
-    targetRevision: main
+    targetRevision: master
     path: platform/apps
     directory:
       recurse: true

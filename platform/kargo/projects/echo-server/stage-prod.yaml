@@ -21,7 +21,7 @@ spec:
           config:
             repoURL: https://github.com/AaronRoethe/homelab
             checkout:
-              - branch: main
+              - branch: master
                 path: ./src
         - uses: yaml-update
           as: update-image

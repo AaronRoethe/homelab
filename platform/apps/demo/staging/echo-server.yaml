@@ -15,7 +15,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/AaronRoethe/homelab
-    targetRevision: main
+    targetRevision: master
     path: apps/echo-server/chart
     helm:
       releaseName: echo-server
