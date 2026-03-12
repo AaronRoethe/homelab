@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: registry.infra.svc.cluster.local:5000/echo-server
+  repository: ghcr.io/aaronroethe/echo-server
   tag: latest
   pullPolicy: IfNotPresent
 

@@ -30,7 +30,7 @@ on:
     - cron: "0 9 * * 1"
 
 env:
-  REGISTRY: registry.homelab.local:30500
+  REGISTRY: ghcr.io/aaronroethe
 
 jobs:
   release-echo-server:
@@ -40,6 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,6 +49,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run unit tests
         working-directory: apps/echo-server
@@ -144,6 +152,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -152,6 +161,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run vet
         working-directory: apps/traffic-gen
