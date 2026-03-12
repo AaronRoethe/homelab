@@ -1,0 +1,79 @@
+basePath: /
+definitions:
+  http.Header:
+    additionalProperties:
+      items:
+        type: string
+      type: array
+    type: object
+  internal_handler.EchoResponse:
+    properties:
+      arch:
+        type: string
+      go:
+        type: string
+      headers:
+        $ref: '#/definitions/http.Header'
+      hostname:
+        type: string
+      method:
+        type: string
+      path:
+        type: string
+      timestamp:
+        type: string
+    type: object
+  internal_handler.HealthResponse:
+    properties:
+      status:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: A simple HTTP echo service for homelab. Returns request metadata, health
+    status, and readiness.
+  title: echo-server API
+  version: 0.1.0
+paths:
+  /:
+    get:
+      description: Returns hostname, timestamp, method, path, headers, Go version,
+        and architecture
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.EchoResponse'
+      summary: Echo request metadata
+      tags:
+      - echo
+  /healthz:
+    get:
+      description: Returns service health status
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.HealthResponse'
+      summary: Health check
+      tags:
+      - health
+  /ready:
+    get:
+      description: Returns service health status
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.HealthResponse'
+      summary: Health check
+      tags:
+      - health
+swagger: "2.0"

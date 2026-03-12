@@ -1,3 +1,11 @@
+// echo-server is a lightweight HTTP service that echoes request metadata as JSON.
+//
+//	@title			echo-server API
+//	@version		0.1.0
+//	@description	A simple HTTP echo service for homelab. Returns request metadata, health status, and readiness.
+//
+//	@host		localhost:8080
+//	@BasePath	/
 package main
 
 import (
@@ -11,6 +19,9 @@ import (
 	"time"
 
 	"github.com/AaronRoethe/homelab/apps/echo-server/internal/handler"
+
+	_ "github.com/AaronRoethe/homelab/apps/echo-server/docs"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
 func main() {
@@ -24,6 +35,9 @@ func main() {
 	mux.HandleFunc("GET /", handler.HandleEcho)
 	mux.HandleFunc("GET /healthz", handler.HandleHealth)
 	mux.HandleFunc("GET /ready", handler.HandleHealth)
+	mux.Handle("GET /swagger/", httpSwagger.Handler(
+		httpSwagger.URL("/swagger/doc.json"),
+	))
 
 	srv := &http.Server{
 		Addr:         ":8080",
@@ -86,8 +100,8 @@ func withLogging(next http.Handler) http.Handler {
 
 		elapsed := time.Since(start)
 
-		// Health/ready checks log at debug to reduce noise in production
-		if r.URL.Path == "/healthz" || r.URL.Path == "/ready" {
+		// Health/ready/swagger log at debug to reduce noise
+		if r.URL.Path == "/healthz" || r.URL.Path == "/ready" || strings.HasPrefix(r.URL.Path, "/swagger/") {
 			slog.Debug("request",
 				"method", r.Method,
 				"path", r.URL.Path,

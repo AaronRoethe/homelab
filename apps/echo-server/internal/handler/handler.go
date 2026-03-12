@@ -25,6 +25,13 @@ type HealthResponse struct {
 }
 
 // HandleEcho returns request metadata as JSON.
+//
+//	@Summary	Echo request metadata
+//	@Description	Returns hostname, timestamp, method, path, headers, Go version, and architecture
+//	@Tags		echo
+//	@Produce	json
+//	@Success	200	{object}	EchoResponse
+//	@Router		/ [get]
 func HandleEcho(w http.ResponseWriter, r *http.Request) {
 	hostname, _ := os.Hostname()
 
@@ -43,6 +50,14 @@ func HandleEcho(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleHealth returns a simple health status.
+//
+//	@Summary	Health check
+//	@Description	Returns service health status
+//	@Tags		health
+//	@Produce	json
+//	@Success	200	{object}	HealthResponse
+//	@Router		/healthz [get]
+//	@Router		/ready [get]
 func HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
