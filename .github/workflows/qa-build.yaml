@@ -34,7 +34,7 @@ jobs:
   qa-echo-server:
     needs: detect-changes
     if: needs.detect-changes.outputs.echo-server == 'true'
-    runs-on: [self-hosted, arm64]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
@@ -101,7 +101,7 @@ jobs:
   qa-traffic-gen:
     needs: detect-changes
     if: needs.detect-changes.outputs.traffic-gen == 'true'
-    runs-on: [self-hosted, arm64]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
