@@ -11,9 +11,6 @@ spec:
       sources:
         stages:
           - staging
-  verification:
-    analysisTemplates:
-      - name: echo-server-prod-verify
   promotionTemplate:
     spec:
       steps:
@@ -36,6 +33,7 @@ spec:
             messageFromSteps:
               - update-image
         - uses: git-push
+          as: push
           config:
             path: ./src
         - uses: argocd-update
@@ -44,4 +42,4 @@ spec:
               - name: echo-server-prod
                 sources:
                   - repoURL: https://github.com/AaronRoethe/homelab
-                    desiredRevision: ${{ outputs.steps['git-push'].commit }}
+                    desiredRevision: ${{ outputs.push.commit }}

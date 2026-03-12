@@ -10,9 +10,6 @@ spec:
         name: echo-server
       sources:
         direct: true
-  verification:
-    analysisTemplates:
-      - name: echo-server-dev-verify
   promotionTemplate:
     spec:
       steps:
@@ -35,6 +32,7 @@ spec:
             messageFromSteps:
               - update-image
         - uses: git-push
+          as: push
           config:
             path: ./src
         - uses: argocd-update
@@ -43,4 +41,4 @@ spec:
               - name: echo-server-dev
                 sources:
                   - repoURL: https://github.com/AaronRoethe/homelab
-                    desiredRevision: ${{ outputs.steps['git-push'].commit }}
+                    desiredRevision: ${{ outputs.push.commit }}
