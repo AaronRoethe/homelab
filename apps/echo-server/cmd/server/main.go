@@ -35,7 +35,7 @@ func main() {
 	mux.HandleFunc("GET /", handler.HandleEcho)
 	mux.HandleFunc("GET /healthz", handler.HandleHealth)
 	mux.HandleFunc("GET /ready", handler.HandleHealth)
-	mux.Handle("GET /swagger/", httpSwagger.Handler(
+	mux.Handle("/swagger/", httpSwagger.Handler(
 		httpSwagger.URL("/swagger/doc.json"),
 	))
 
