@@ -20,8 +20,9 @@ import (
 
 	"github.com/AaronRoethe/homelab/apps/echo-server/internal/handler"
 
-	_ "github.com/AaronRoethe/homelab/apps/echo-server/docs"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
+
+	_ "github.com/AaronRoethe/homelab/apps/echo-server/docs"
 )
 
 func main() {
@@ -32,12 +33,14 @@ func main() {
 	slog.SetDefault(logger)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", handler.HandleEcho)
+	mux.HandleFunc("GET /swagger/{path...}", func(w http.ResponseWriter, r *http.Request) {
+		httpSwagger.Handler(
+			httpSwagger.URL("/swagger/doc.json"),
+		).ServeHTTP(w, r)
+	})
 	mux.HandleFunc("GET /healthz", handler.HandleHealth)
 	mux.HandleFunc("GET /ready", handler.HandleHealth)
-	mux.Handle("/swagger/", httpSwagger.Handler(
-		httpSwagger.URL("/swagger/doc.json"),
-	))
+	mux.HandleFunc("GET /", handler.HandleEcho)
 
 	srv := &http.Server{
 		Addr:         ":8080",
