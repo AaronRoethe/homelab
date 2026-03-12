@@ -9,7 +9,7 @@ metadata:
     homelab/project: demo
     homelab/env: prod
   annotations:
-    kargo.akuity.io/authorized-stage: echo-server:prod
+    kargo.akuity.io/authorized-stage: echo-server:prod,echo-server:prod-canary
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

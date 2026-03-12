@@ -1,0 +1,64 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: echo-server-prod-canary-verify
+  namespace: echo-server
+spec:
+  metrics:
+    - name: canary-smoke
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            activeDeadlineSeconds: 60
+            ttlSecondsAfterFinished: 300
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: verify
+                    image: curlimages/curl:latest
+                    imagePullPolicy: IfNotPresent
+                    resources:
+                      requests:
+                        cpu: 5m
+                        memory: 8Mi
+                      limits:
+                        memory: 16Mi
+                    command: [sh, -c]
+                    args:
+                      - |
+                        set -e
+                        CANARY="http://echo-server-canary.prod.svc.cluster.local:80"
+                        STABLE="http://echo-server.prod.svc.cluster.local:80"
+
+                        echo "--- Waiting for canary to settle ---"
+                        sleep 10
+
+                        echo "--- Canary health check ---"
+                        curl -sf --max-time 5 "$CANARY/healthz" | grep -q '"status":"ok"'
+                        echo "PASS: canary /healthz"
+
+                        echo "--- Canary readiness check ---"
+                        curl -sf --max-time 5 "$CANARY/ready" | grep -q '"status":"ok"'
+                        echo "PASS: canary /ready"
+
+                        echo "--- Canary functional check ---"
+                        CRESP=$(curl -sf --max-time 5 "$CANARY/")
+                        echo "$CRESP" | grep -q '"hostname"'
+                        echo "$CRESP" | grep -q '"arch"'
+                        echo "$CRESP" | grep -q '"timestamp"'
+                        echo "PASS: canary / returns valid response"
+
+                        echo "--- Stable still healthy ---"
+                        curl -sf --max-time 5 "$STABLE/healthz" | grep -q '"status":"ok"'
+                        echo "PASS: stable /healthz still up"
+
+                        echo "--- Canary latency check (5 requests, all < 1s) ---"
+                        for i in 1 2 3 4 5; do
+                          TIME=$(curl -sf -o /dev/null -w "%{time_total}" --max-time 1 "$CANARY/")
+                          echo "  Request $i: ${TIME}s"
+                        done
+                        echo "PASS: canary latency within bounds"
+
+                        echo "--- Canary verification passed ---"

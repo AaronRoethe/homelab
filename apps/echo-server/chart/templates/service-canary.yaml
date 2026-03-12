@@ -1,9 +1,11 @@
+{{- if .Values.canary.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "echo-server.fullname" . }}
+  name: {{ include "echo-server.fullname" . }}-canary
   labels:
     {{- include "echo-server.labels" . | nindent 4 }}
+    app.kubernetes.io/variant: canary
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -13,4 +15,5 @@ spec:
       name: http
   selector:
     {{- include "echo-server.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/variant: stable
+    app.kubernetes.io/variant: canary
+{{- end }}

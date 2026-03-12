@@ -29,6 +29,13 @@ healthcheck:
 serviceAccount:
   create: true
 
+canary:
+  enabled: false
+  image:
+    tag: ""
+  weight: 20
+  replicaCount: 1
+
 config:
   env:
     LOG_LEVEL: "info"

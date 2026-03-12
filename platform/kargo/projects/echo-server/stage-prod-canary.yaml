@@ -1,7 +1,7 @@
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
 metadata:
-  name: prod
+  name: prod-canary
   namespace: echo-server
 spec:
   requestedFreight:
@@ -10,7 +10,7 @@ spec:
         name: echo-server
       sources:
         stages:
-          - prod-canary
+          - staging
   promotionTemplate:
     spec:
       steps:
@@ -21,19 +21,19 @@ spec:
               - branch: master
                 path: ./src
         - uses: yaml-update
-          as: update-image
+          as: update-canary
           config:
             path: ./src/platform/apps/demo/prod/echo-server.yaml
             updates:
-              - key: spec.source.helm.valuesObject.image.tag
-                value: ${{ imageFrom("ghcr.io/aaronroethe/echo-server").Tag }}
               - key: spec.source.helm.valuesObject.canary.enabled
-                value: false
+                value: true
+              - key: spec.source.helm.valuesObject.canary.image.tag
+                value: ${{ imageFrom("ghcr.io/aaronroethe/echo-server").Tag }}
         - uses: git-commit
           config:
             path: ./src
             messageFromSteps:
-              - update-image
+              - update-canary
         - uses: git-push
           as: push
           config:

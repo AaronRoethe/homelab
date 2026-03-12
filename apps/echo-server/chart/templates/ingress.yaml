@@ -1,20 +1,52 @@
 {{- if .Values.ingress.enabled }}
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+{{- if .Values.canary.enabled }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: TraefikService
+metadata:
+  name: {{ include "echo-server.fullname" . }}-weighted
+  labels:
+    {{- include "echo-server.labels" . | nindent 4 }}
+spec:
+  weighted:
+    services:
+      - name: {{ include "echo-server.fullname" . }}
+        port: {{ .Values.service.port }}
+        weight: {{ sub 100 (int .Values.canary.weight) }}
+      - name: {{ include "echo-server.fullname" . }}-canary
+        port: {{ .Values.service.port }}
+        weight: {{ .Values.canary.weight }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
 metadata:
   name: {{ include "echo-server.fullname" . }}
   labels:
     {{- include "echo-server.labels" . | nindent 4 }}
 spec:
-  rules:
-    - host: {{ .Values.ingress.host }}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "echo-server.fullname" . }}
-                port:
-                  number: {{ .Values.service.port }}
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`{{ .Values.ingress.host }}`)
+      kind: Rule
+      services:
+        - name: {{ include "echo-server.fullname" . }}-weighted
+          kind: TraefikService
+{{- else }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "echo-server.fullname" . }}
+  labels:
+    {{- include "echo-server.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`{{ .Values.ingress.host }}`)
+      kind: Rule
+      services:
+        - name: {{ include "echo-server.fullname" . }}
+          port: {{ .Values.service.port }}
+{{- end }}
 {{- end }}

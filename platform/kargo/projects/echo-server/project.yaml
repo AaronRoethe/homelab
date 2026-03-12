@@ -8,5 +8,7 @@ spec:
       autoPromotionEnabled: true
     - stage: staging
       autoPromotionEnabled: true
+    - stage: prod-canary
+      autoPromotionEnabled: false
     - stage: prod
       autoPromotionEnabled: false
