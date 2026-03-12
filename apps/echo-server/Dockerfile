@@ -1,11 +1,12 @@
 FROM golang:1.22-alpine AS build
 WORKDIR /src
-COPY go.mod go.sum* ./
-RUN go mod download 2>/dev/null || true
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /echo-server ./cmd/server
+COPY apps/pkg/cfg/ apps/pkg/cfg/
+COPY apps/echo-server/ apps/echo-server/
+RUN cd apps/echo-server && go mod download 2>/dev/null || true
+RUN cd apps/echo-server && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /echo-server ./cmd/server
 
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /echo-server /echo-server
+WORKDIR /app
+COPY --from=build /echo-server /app/echo-server
 EXPOSE 8080
-ENTRYPOINT ["/echo-server"]
+ENTRYPOINT ["/app/echo-server"]

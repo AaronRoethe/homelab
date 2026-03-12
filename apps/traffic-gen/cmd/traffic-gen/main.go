@@ -7,8 +7,9 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
+
+	"github.com/AaronRoethe/homelab/apps/pkg/cfg"
 )
 
 func main() {
@@ -49,11 +50,15 @@ type results struct {
 }
 
 func loadConfig() config {
+	c, err := cfg.LoadEnv()
+	if err != nil {
+		panic(fmt.Sprintf("failed to load config: %v", err))
+	}
 	return config{
-		TargetURL:   envOrDefault("TARGET_URL", "http://echo-server:80"),
-		Requests:    envIntOrDefault("REQUESTS", 100),
-		Concurrency: envIntOrDefault("CONCURRENCY", 5),
-		DelayMs:     envIntOrDefault("DELAY_MS", 100),
+		TargetURL:   c.Env().GetOrDefault("TARGET_URL", "http://echo-server:80"),
+		Requests:    c.Env().GetIntOrDefault("REQUESTS", 100),
+		Concurrency: c.Env().GetIntOrDefault("CONCURRENCY", 5),
+		DelayMs:     c.Env().GetIntOrDefault("DELAY_MS", 100),
 	}
 }
 
@@ -154,20 +159,4 @@ func printSummary(r results) {
 	} else {
 		fmt.Println("STATUS: PASS")
 	}
-}
-
-func envOrDefault(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
-func envIntOrDefault(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-	return def
 }

@@ -55,7 +55,7 @@ kargo-verification: ## Apply Kargo verification AnalysisTemplates
 ## --- Apps ---
 
 echo-build: ## Build echo-server container
-	cd apps/echo-server && docker build -t $(REGISTRY)/echo-server:latest .
+	docker build -t $(REGISTRY)/echo-server:latest -f apps/echo-server/Dockerfile .
 
 echo-push: echo-build ## Build and push echo-server container
 	docker push $(REGISTRY)/echo-server:latest
@@ -65,7 +65,7 @@ echo-test: ## Run echo-server unit tests
 
 echo-release: echo-test ## Build and push with semver tag (VERSION=0.1.0)
 	@echo "Building and pushing echo-server:$(VERSION)"
-	cd apps/echo-server && docker build \
+	docker build -f apps/echo-server/Dockerfile \
 		-t $(REGISTRY)/echo-server:$(VERSION) \
 		-t $(REGISTRY)/echo-server:latest .
 	docker push $(REGISTRY)/echo-server:$(VERSION)

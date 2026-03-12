@@ -28,3 +28,13 @@ healthcheck:
 
 serviceAccount:
   create: true
+
+config:
+  env:
+    LOG_LEVEL: "info"
+    PORT: "8080"
+    READ_TIMEOUT: "5s"
+    WRITE_TIMEOUT: "10s"
+    IDLE_TIMEOUT: "60s"
+    SHUTDOWN_TIMEOUT: "10s"
+  secret: {}

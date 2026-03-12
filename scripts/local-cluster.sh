@@ -156,9 +156,9 @@ deploy_apps() {
     echo "--- echo-server ---"
     cd apps/echo-server
     go test -race -count=1 ./...
-    docker build -t "${REGISTRY_HOST}/echo-server:0.1.0" .
-    docker push "${REGISTRY_HOST}/echo-server:0.1.0"
     cd ../..
+    docker build -f apps/echo-server/Dockerfile -t "${REGISTRY_HOST}/echo-server:0.1.0" .
+    docker push "${REGISTRY_HOST}/echo-server:0.1.0"
 
     echo ""
     echo "--- traffic-gen ---"

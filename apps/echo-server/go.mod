@@ -3,9 +3,12 @@ module github.com/AaronRoethe/homelab/apps/echo-server
 go 1.22.0
 
 require (
+	github.com/AaronRoethe/homelab/apps/pkg/cfg v0.0.0
 	github.com/swaggo/http-swagger/v2 v2.0.2
 	github.com/swaggo/swag v1.16.6
 )
+
+replace github.com/AaronRoethe/homelab/apps/pkg/cfg => ../pkg/cfg
 
 require (
 	github.com/KyleBanks/depth v1.2.1 // indirect

@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/AaronRoethe/homelab/apps/echo-server/internal/handler"
+	"github.com/AaronRoethe/homelab/apps/pkg/cfg"
 
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 
@@ -26,7 +28,12 @@ import (
 )
 
 func main() {
-	level := parseLogLevel(os.Getenv("LOG_LEVEL"))
+	config, err := cfg.LoadEnv()
+	if err != nil {
+		panic(fmt.Sprintf("failed to load config: %v", err))
+	}
+
+	level := parseLogLevel(config.Env().GetOrDefault("LOG_LEVEL", "info"))
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,
 	}))
@@ -42,12 +49,13 @@ func main() {
 	mux.HandleFunc("GET /ready", handler.HandleHealth)
 	mux.HandleFunc("GET /", handler.HandleEcho)
 
+	addr := fmt.Sprintf(":%s", config.Env().GetOrDefault("PORT", "8080"))
 	srv := &http.Server{
-		Addr:         ":8080",
+		Addr:         addr,
 		Handler:      withLogging(mux),
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  config.Env().GetDurationOrDefault("READ_TIMEOUT", 5*time.Second),
+		WriteTimeout: config.Env().GetDurationOrDefault("WRITE_TIMEOUT", 10*time.Second),
+		IdleTimeout:  config.Env().GetDurationOrDefault("IDLE_TIMEOUT", 60*time.Second),
 	}
 
 	go func() {
@@ -63,7 +71,8 @@ func main() {
 	sig := <-quit
 	slog.Info("shutting down", "signal", sig.String())
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownTimeout := config.Env().GetDurationOrDefault("SHUTDOWN_TIMEOUT", 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {

@@ -47,3 +47,29 @@ spec:
             capabilities:
               drop:
                 - ALL
+          {{- if or .Values.config.env .Values.config.secret }}
+          volumeMounts:
+            {{- if .Values.config.env }}
+            - name: config-env
+              mountPath: /app/config/env
+              readOnly: true
+            {{- end }}
+            {{- if .Values.config.secret }}
+            - name: config-secret
+              mountPath: /app/config/secret
+              readOnly: true
+            {{- end }}
+          {{- end }}
+      {{- if or .Values.config.env .Values.config.secret }}
+      volumes:
+        {{- if .Values.config.env }}
+        - name: config-env
+          configMap:
+            name: {{ include "echo-server.fullname" . }}-env
+        {{- end }}
+        {{- if .Values.config.secret }}
+        - name: config-secret
+          secret:
+            secretName: {{ include "echo-server.fullname" . }}-secret
+        {{- end }}
+      {{- end }}
