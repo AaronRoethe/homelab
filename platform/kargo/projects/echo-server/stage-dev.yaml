@@ -25,7 +25,7 @@ spec:
             path: ./src/platform/apps/demo/dev/echo-server.yaml
             updates:
               - key: spec.source.helm.valuesObject.image.tag
-                value: ${{ imageFrom("registry.infra.svc.cluster.local:5000/echo-server").Tag }}
+                value: ${{ imageFrom("ghcr.io/aaronroethe/echo-server").Tag }}
         - uses: git-commit
           config:
             path: ./src

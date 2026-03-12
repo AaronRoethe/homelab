@@ -6,6 +6,6 @@ metadata:
 spec:
   subscriptions:
     - image:
-        repoURL: registry.infra.svc.cluster.local:5000/echo-server
+        repoURL: ghcr.io/aaronroethe/echo-server
         semverConstraint: ">=0.1.0"
         discoveryLimit: 5
