@@ -1,4 +1,4 @@
-.PHONY: help cluster-up cluster-create cluster-delete cluster-bootstrap cluster-deploy cluster-status pi-setup argocd-install argocd-password argocd-bootstrap kargo-projects kargo-verification echo-build echo-push echo-release echo-test validate-chart smoke-dev smoke-staging smoke-prod smoke-all
+.PHONY: help cluster-up cluster-create cluster-delete cluster-bootstrap cluster-deploy cluster-status pi-setup argocd-install argocd-password argocd-bootstrap echo-build echo-push echo-release echo-test validate-chart smoke-dev smoke-staging smoke-prod smoke-all
 
 REGISTRY ?= k3d-registry.homelab.local:30500
 PI_HOST ?= homelab.local
@@ -42,15 +42,6 @@ argocd-password: ## Get ArgoCD initial admin password
 
 argocd-bootstrap: ## Apply the root app-of-apps
 	kubectl apply -f platform/apps/root-app.yaml
-
-kargo-projects: ## Apply Kargo project, warehouse, and stages for echo-server
-	kubectl apply -f platform/kargo/projects/echo-server/project.yaml
-	@echo "Waiting for project namespace..."
-	@sleep 5
-	kubectl apply -f platform/kargo/projects/echo-server/
-
-kargo-verification: ## Apply Kargo verification AnalysisTemplates
-	kubectl apply -f tests/kargo/
 
 ## --- Apps ---
 

@@ -36,21 +36,21 @@ flowchart LR
         perf["Basic load test"]
     end
 
-    subgraph prod["Prod Gate — Safe Release"]
-        canary["Canary verification"]
-        smoke["Smoke + rollback trigger"]
-        manual["Manual approval"]
+    subgraph prod["Prod Gate — PR Approval"]
+        prod_pr["GH Action opens PR"]
+        merge["Developer merges PR"]
+        argocd_sync["ArgoCD syncs prod"]
     end
 
     dev -->|"auto-promote<br/>if all pass"| staging
-    staging -->|"auto-promote<br/>if all pass"| prod
+    staging -->|"staging updated<br/>on master"| prod
 ```
 
 | Environment | Gate Philosophy            | Test Type                              | Runs In                                 |
 | ----------- | -------------------------- | -------------------------------------- | --------------------------------------- |
 | **Dev**     | Fast, catch obvious breaks | Unit tests + health check              | CI + Kargo verification Job             |
 | **Staging** | Thorough, catch real bugs  | E2E test suite against live deployment | Kargo verification Job (test container) |
-| **Prod**    | Safe, verify after deploy  | Canary smoke + automatic rollback      | Kargo verification Job + manual gate    |
+| **Prod**    | Safe, PR-gated deploy      | PR approval + ArgoCD auto-sync         | GH Action opens PR, merge = deploy      |
 
 ## Dev Gate: Fast Feedback
 
@@ -58,8 +58,8 @@ Goal: catch compilation errors, broken logic, and crashed processes in under 60 
 
 ```mermaid
 flowchart TD
-    push["Image pushed with semver tag"] --> warehouse["Kargo Warehouse detects tag"]
-    warehouse --> promote["Kargo promotes to dev<br/>(updates values-dev.yaml, ArgoCD syncs)"]
+    push["Stable release tag pushed to GHCR"] --> warehouse["Kargo Warehouse detects tag"]
+    warehouse --> promote["Kargo promotes to dev<br/>(updates demo/dev/echo-server.yaml, ArgoCD syncs)"]
     promote --> argocd["ArgoCD waits for<br/>readiness probe to pass"]
     argocd --> verify["Kargo Verification Job"]
 
@@ -333,121 +333,44 @@ The E2E image is rebuilt whenever tests change. It doesn't need to be versioned
 with semver — `latest` is fine since the tests validate the _deployed_ service,
 not themselves.
 
-## Prod Gate: Safe Release
+## Prod Gate: PR-Gated Deployment
 
-Goal: verify the deployment is healthy in production, with automatic rollback
-if something is wrong. Combined with Kargo's manual approval gate.
+Goal: require explicit human approval before deploying to production. The
+approval mechanism is a GitHub PR — reviewing and merging the PR deploys to prod.
 
 ```mermaid
 flowchart TD
-    freight["Freight verified in staging<br/>(E2E suite passed)"] --> manual["Manual approval<br/>in Kargo UI"]
-    manual --> promote["Kargo promotes to prod"]
-    promote --> argocd["ArgoCD deploys + healthy"]
-    argocd --> verify["Kargo Verification Job"]
-
-    subgraph verify_steps["Prod Verification — Canary Smoke"]
-        wait["Wait 10s for traffic to flow"]
-        health["Health + readiness check"]
-        func["Functional check (echo returns valid JSON)"]
-        latency["Latency check: 5 requests, all < 1s"]
-        compare["Response schema matches staging"]
-    end
-
-    verify --> verify_steps
-    verify_steps -->|"pass"| done["Freight verified in prod<br/>Release complete"]
-    verify_steps -->|"fail"| rollback["Freight NOT verified<br/>ArgoCD auto-heals to last good state"]
+    freight["Freight verified in staging<br/>(E2E suite passed)"] --> staging_update["Kargo updates staging file on master"]
+    staging_update --> gh_action["promote-prod.yaml GH Action triggers"]
+    gh_action --> pr["Opens PR: promote(prod): echo-server vX.Y.Z"]
+    pr -->|"developer reviews + merges"| argocd["ArgoCD auto-syncs prod"]
+    argocd --> done["Prod deployment complete"]
 ```
 
 ### Why Prod is Different
 
-Prod doesn't re-run the full E2E suite — staging already did that against the
-same image. Prod verification answers a different question:
-**"is this image healthy in the production namespace?"**
+Prod doesn't use Kargo for promotion. Instead:
 
-This catches:
+1. Kargo handles dev → staging automatically (with verification)
+2. When staging is updated on master, a GH Action opens a PR to update prod
+3. The PR is the approval gate — merging it deploys to prod
+4. ArgoCD's `selfHeal: true` keeps prod in sync with master
 
-- Environment-specific config errors (wrong secrets, missing env vars)
-- Resource constraint issues (OOM under prod quota)
-- Network policy or ingress misconfigs specific to prod
+This gives you:
 
-### Kargo Prod Verification
+- Code review on prod deployments (PR diff shows exactly what changes)
+- Audit trail via PR history
+- Easy rollback by reverting the PR
+- No need for Kargo UI access to approve prod
 
-```yaml
-# tests/kargo/echo-server-prod-verify.yaml
-apiVersion: argoproj.io/v1alpha1
-kind: AnalysisTemplate
-metadata:
-  name: echo-server-prod-verify
-  namespace: echo-server
-spec:
-  metrics:
-    - name: canary-smoke
-      provider:
-        job:
-          spec:
-            backoffLimit: 0
-            activeDeadlineSeconds: 60
-            ttlSecondsAfterFinished: 300
-            template:
-              spec:
-                restartPolicy: Never
-                containers:
-                  - name: verify
-                    image: curlimages/curl:latest
-                    imagePullPolicy: IfNotPresent
-                    resources:
-                      requests: { cpu: 5m, memory: 8Mi }
-                      limits: { memory: 16Mi }
-                    command: [sh, -c]
-                    args:
-                      - |
-                        set -e
-                        SVC="http://echo-server.prod.svc.cluster.local:80"
+### Rollback
 
-                        echo "--- Waiting for traffic to settle ---"
-                        sleep 10
+If something goes wrong in production:
 
-                        echo "--- Health check ---"
-                        curl -sf --max-time 5 "$SVC/healthz" | grep -q '"status":"ok"'
-                        echo "PASS: /healthz"
-
-                        echo "--- Readiness check ---"
-                        curl -sf --max-time 5 "$SVC/ready" | grep -q '"status":"ok"'
-                        echo "PASS: /ready"
-
-                        echo "--- Functional check ---"
-                        RESP=$(curl -sf --max-time 5 "$SVC/")
-                        echo "$RESP" | grep -q '"hostname"'
-                        echo "$RESP" | grep -q '"arch"'
-                        echo "$RESP" | grep -q '"timestamp"'
-                        echo "PASS: / returns valid response"
-
-                        echo "--- Latency check (5 requests, all < 1s) ---"
-                        for i in 1 2 3 4 5; do
-                          TIME=$(curl -sf -o /dev/null -w "%{time_total}" --max-time 1 "$SVC/")
-                          echo "  Request $i: ${TIME}s"
-                        done
-                        echo "PASS: latency within bounds"
-
-                        echo "--- Prod gate passed ---"
-```
-
-Added to `stage-prod.yaml`:
-
-```yaml
-verification:
-  analysisTemplates:
-    - name: echo-server-prod-verify
-```
-
-### Automatic Rollback
-
-If the prod verification Job fails (exit 1), the Freight is **not verified** in
-prod. ArgoCD's `selfHeal: true` keeps the cluster in the last synced state.
-The failed promotion is visible in the Kargo UI.
-
-To recover: fix the issue, push a new image tag, let it flow through dev →
-staging again, then re-approve for prod.
+1. **Revert PR**: Revert the promotion PR on GitHub — ArgoCD syncs immediately
+2. **New release**: Fix the issue, cut a new release, let it flow through the pipeline
+3. **Emergency**: Manually update `platform/apps/demo/prod/echo-server.yaml`
+   to pin a known-good tag, push to master
 
 ## Summary: Gate Comparison
 
@@ -469,26 +392,24 @@ graph TB
     end
 
     subgraph prod["PROD"]
-        p0["Manual approval gate"]
-        p1["Health + readiness"]
-        p2["Functional smoke"]
-        p3["Latency check (5 req < 1s)"]
-        p4["Auto-rollback on failure"]
-        p_time["~30 seconds + human"]
+        p0["GH Action opens PR"]
+        p1["Developer reviews + merges"]
+        p2["ArgoCD auto-syncs"]
+        p_time["PR review + merge"]
     end
 
     dev -->|"auto"| staging
-    staging -->|"auto"| prod
+    staging -->|"PR gate"| prod
 ```
 
-|                 | Dev                             | Staging                                 | Prod                                 |
-| --------------- | ------------------------------- | --------------------------------------- | ------------------------------------ |
-| **Pre-build**   | `go test -race ./...`, `go vet` | —                                       | —                                    |
-| **Post-deploy** | curl health + echo check        | Full E2E test container                 | Canary smoke + latency               |
-| **Promotion**   | Auto                            | Auto (if E2E passes)                    | Manual approval + auto verification  |
-| **On failure**  | Blocks staging                  | Blocks prod                             | ArgoCD self-heals, manual re-promote |
-| **Runs as**     | Kargo verification Job (curl)   | Kargo verification Job (Go test binary) | Kargo verification Job (curl)        |
-| **Time**        | ~15s                            | ~30-60s                                 | ~30s + human                         |
+|                 | Dev                             | Staging                                 | Prod                          |
+| --------------- | ------------------------------- | --------------------------------------- | ----------------------------- |
+| **Pre-build**   | `go test -race ./...`, `go vet` | —                                       | —                             |
+| **Post-deploy** | curl health + echo check        | Full E2E test container                 | —                             |
+| **Promotion**   | Auto                            | Auto (if E2E passes)                    | PR merge (GH Action opens PR) |
+| **On failure**  | Blocks staging                  | Blocks prod PR                          | Revert PR, ArgoCD syncs back  |
+| **Runs as**     | Kargo verification Job (curl)   | Kargo verification Job (Go test binary) | GitHub PR + ArgoCD auto-sync  |
+| **Time**        | ~15s                            | ~30-60s                                 | PR review time                |
 
 ## File Structure
 
@@ -507,8 +428,7 @@ apps/echo-server/
 
 tests/kargo/
 ├── echo-server-dev-verify.yaml       # AnalysisTemplate: curl health check
-├── echo-server-staging-verify.yaml   # AnalysisTemplate: E2E test container
-└── echo-server-prod-verify.yaml      # AnalysisTemplate: canary smoke
+└── echo-server-staging-verify.yaml   # AnalysisTemplate: E2E test container
 ```
 
 ## Makefile Targets
@@ -541,6 +461,5 @@ validate-chart       Helm lint + template + kubeconform
 5. Write `e2e/e2e_test.go` test suite and `e2e/Dockerfile`
 6. Create `tests/kargo/echo-server-staging-verify.yaml` — E2E test container
 7. Add `verification` stanza to `stage-staging.yaml`
-8. Create `tests/kargo/echo-server-prod-verify.yaml` — canary smoke
-9. Add `verification` stanza to `stage-prod.yaml`, add manual approval
-10. Add all Makefile targets
+8. Set up `promote-prod.yaml` GH Action for PR-gated prod promotion
+9. Add all Makefile targets

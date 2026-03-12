@@ -19,11 +19,10 @@ graph TB
             code["cmd/server/main.go<br/>Dockerfile"]
             chart["chart/<br/>Chart.yaml + values.yaml + templates/"]
         end
-        subgraph overlays["platform/overlays/ — Ops Team"]
-            vpi["values-pi.yaml"]
-            vdev["values-dev.yaml"]
-            vstg["values-staging.yaml"]
-            vprod["values-prod.yaml"]
+        subgraph app_defs["platform/apps/demo/ — Ops Team"]
+            vdev["dev/echo-server.yaml"]
+            vstg["staging/echo-server.yaml"]
+            vprod["prod/echo-server.yaml"]
         end
         subgraph kargo_cfg["platform/kargo/ — Ops Team"]
             project["Project + Warehouse + Stages"]
@@ -31,7 +30,7 @@ graph TB
     end
 
     subgraph ghcr["GHCR Registry"]
-        tags["echo-server:<br/>0.1.0, 0.2.0, ..."]
+        tags["echo-server:<br/>0.2.0-dev.1 (ignored)<br/>0.2.0 (promoted)"]
     end
 
     subgraph cluster["k3s Cluster (Raspberry Pi 8GB)"]
@@ -41,9 +40,9 @@ graph TB
         subgraph pipeline["Promotion Pipeline"]
             dev_stage["Stage: dev<br/>(auto)"]
             stg_stage["Stage: staging<br/>(auto)"]
-            prod_stage["Stage: prod<br/>(manual)"]
-            dev_stage -->|"healthy"| stg_stage
-            stg_stage -->|"healthy"| prod_stage
+            prod_pr["GH Action<br/>opens PR"]
+            dev_stage -->|"verified"| stg_stage
+            stg_stage -->|"staging updated"| prod_pr
         end
 
         subgraph namespaces["Kubernetes Namespaces"]
@@ -56,13 +55,13 @@ graph TB
         warehouse -->|"triggers"| argocd
         dev_stage --> ns_dev
         stg_stage --> ns_stg
-        prod_stage --> ns_prod
+        prod_pr -->|"merge PR"| ns_prod
     end
 
     code -->|"docker build + push"| tags
-    tags -->|"polls for new tags"| warehouse
-    chart -->|"multi-source"| argocd
-    overlays -->|"multi-source"| argocd
+    tags -->|"polls for stable tags"| warehouse
+    chart -->|"source"| argocd
+    app_defs -->|"inline valuesObject"| argocd
     kargo_cfg --> warehouse
     argocd -->|"sync"| namespaces
 ```
@@ -71,19 +70,19 @@ graph TB
 
 ```mermaid
 flowchart TD
-    push["Developer pushes code"] --> build["CI / make echo-release VERSION=0.2.0"]
-    build --> ghcr["GHCR: new tag 0.2.0"]
+    push["Developer pushes code"] --> dev_build["QA Build: 0.2.0-dev.N (Kargo ignores)"]
+    push --> release["Release workflow: 0.2.0 (stable)"]
+    release --> ghcr["GHCR: new stable tag 0.2.0"]
     ghcr --> warehouse["Warehouse polls → creates Freight 0.2.0"]
 
     warehouse --> dev["Stage: dev (auto-promote)"]
-    dev --> dev_steps["1. git clone homelab<br/>2. update overlays/values-dev.yaml<br/>3. git commit + push<br/>4. ArgoCD syncs echo-server-dev<br/>5. health check passes"]
+    dev --> dev_steps["1. git clone homelab<br/>2. update platform/apps/demo/dev/echo-server.yaml<br/>3. git commit + push<br/>4. ArgoCD syncs echo-server-dev<br/>5. health check passes"]
 
-    dev_steps -->|"dev healthy"| staging["Stage: staging (auto-promote)"]
-    staging --> stg_steps["1. git clone homelab<br/>2. update overlays/values-staging.yaml<br/>3. git commit + push<br/>4. ArgoCD syncs echo-server-staging<br/>5. health check passes"]
+    dev_steps -->|"dev verified"| staging["Stage: staging (auto-promote)"]
+    staging --> stg_steps["1. git clone homelab<br/>2. update platform/apps/demo/staging/echo-server.yaml<br/>3. git commit + push<br/>4. ArgoCD syncs echo-server-staging<br/>5. E2E tests pass"]
 
-    stg_steps -->|"staging healthy"| gate{"Manual Approval<br/>Kargo UI / CLI"}
-    gate -->|"approved"| prod["Stage: prod"]
-    prod --> prod_steps["1. git clone homelab<br/>2. update overlays/values-prod.yaml<br/>3. git commit + push<br/>4. ArgoCD syncs echo-server-prod<br/>5. health check passes"]
+    stg_steps -->|"staging file updated on master"| prod_pr["GH Action opens PR"]
+    prod_pr -->|"developer merges PR"| prod["ArgoCD syncs echo-server-prod"]
 ```
 
 ## Separation of Concerns
@@ -100,16 +99,16 @@ graph LR
 
     subgraph ops_team["Ops Team Ownership"]
         platform["platform/"]
-        argocd_dir["argocd/<br/>install/ + apps/"]
+        argocd_dir["argocd/<br/>install/"]
+        app_defs_dir["apps/demo/<br/>dev/ staging/ prod/<br/>(ArgoCD Application per env)"]
         cert["cert-manager/<br/>install/"]
         kargo_dir["kargo/<br/>install/ + projects/"]
         envs["environments/<br/>dev/ staging/ prod/"]
-        overlays_dir["overlays/echo-server/<br/>values-pi.yaml<br/>values-dev.yaml<br/>values-staging.yaml<br/>values-prod.yaml"]
         platform --> argocd_dir
+        platform --> app_defs_dir
         platform --> cert
         platform --> kargo_dir
         platform --> envs
-        platform --> overlays_dir
     end
 
     subgraph hw_team["Hardware / Provisioning"]
@@ -117,8 +116,8 @@ graph LR
     end
 
     app_chart -.->|"base chart"| argocd_dir
-    overlays_dir -.->|"env values"| argocd_dir
-    kargo_dir -.->|"promotes tags in"| overlays_dir
+    app_defs_dir -.->|"inline valuesObject"| argocd_dir
+    kargo_dir -.->|"promotes tags in"| app_defs_dir
     pi -.->|"provisions"| envs
 ```
 
@@ -126,10 +125,10 @@ graph LR
 `platform/` becomes the infra repo. `pi-setup/` becomes a provisioning repo. The only
 change needed is updating `repoURL` fields in ArgoCD Applications and Kargo Stages.
 
-## ArgoCD Multi-Source Pattern
+## ArgoCD Application Pattern
 
-Each per-env ArgoCD Application uses multi-source to combine the base chart
-(from `apps/`) with overlay values (from `platform/`):
+Each per-env ArgoCD Application uses a single source with inline `valuesObject`
+to set the image tag and env-specific config:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -138,30 +137,33 @@ metadata:
   name: echo-server-dev
   namespace: argocd
   labels:
+    homelab/tier: app
+    homelab/app: echo-server
+    homelab/project: demo
+    homelab/env: dev
+  annotations:
     kargo.akuity.io/authorized-stage: echo-server:dev
 spec:
   project: default
-  sources:
-    # Source 1: base chart from app code
-    - repoURL: https://github.com/AaronRoethe/homelab
-      targetRevision: main
-      path: apps/echo-server/chart
-      helm:
-        valueFiles:
-          - $overlays/platform/overlays/echo-server/values-pi.yaml
-          - $overlays/platform/overlays/echo-server/values-dev.yaml
-    # Source 2: ref for overlay values files
-    - repoURL: https://github.com/AaronRoethe/homelab
-      targetRevision: main
-      ref: overlays
+  source:
+    repoURL: https://github.com/AaronRoethe/homelab
+    targetRevision: master
+    path: apps/echo-server/chart
+    helm:
+      releaseName: echo-server
+      valuesObject:
+        image:
+          repository: ghcr.io/aaronroethe/echo-server
+          tag: 0.2.0
+        ingress:
+          host: echo-dev.homelab.local
   destination:
     server: https://kubernetes.default.svc
     namespace: dev
 ```
 
-The `$overlays` ref lets ArgoCD resolve values files from the second source
-against the first source's Helm chart. This is what keeps app code and infra
-config decoupled while still working together.
+Kargo updates the `image.tag` field in `valuesObject` during promotion. The prod
+Application has no Kargo annotation — prod is managed via PR merge, not Kargo.
 
 ## Resource Budget
 
@@ -181,7 +183,7 @@ config decoupled while still working together.
 | **Project**   | Namespace + promotion policies for an app                     | 1                                 |
 | **Warehouse** | Watches a source (registry, git, Helm repo) for new artifacts | 1                                 |
 | **Freight**   | An immutable artifact reference (e.g., image tag 0.2.0)       | Created automatically             |
-| **Stage**     | An environment. Defines how to promote Freight                | 1 per environment                 |
+| **Stage**     | An environment. Defines how to promote Freight                | 1 per Kargo-managed environment   |
 | **Promotion** | The act of moving Freight into a Stage                        | Created automatically or manually |
 
 ## Kargo CRD Definitions
@@ -199,11 +201,11 @@ spec:
       autoPromotionEnabled: true
     - stage: staging
       autoPromotionEnabled: true
-    - stage: prod
-      autoPromotionEnabled: false
 ```
 
 Creates an `echo-server` namespace where all Kargo resources for this app live.
+Dev and staging auto-promote. Prod is not managed by Kargo — it's gated by a
+GitHub PR (see `promote-prod.yaml` workflow).
 
 ### Warehouse
 
@@ -216,14 +218,16 @@ metadata:
 spec:
   subscriptions:
     - image:
-        repoURL: ghcr.io/aroethe/homelab/echo-server
+        repoURL: ghcr.io/aaronroethe/echo-server
         semverConstraint: ">=0.1.0"
         discoveryLimit: 5
 ```
 
-Polls GHCR every ~5 minutes. When it finds a new semver tag, it creates Freight.
+Polls GHCR every ~5 minutes. When it finds a new **stable** semver tag, it
+creates Freight. Prerelease tags (e.g., `0.2.0-dev.7`) are ignored by default.
 
-**Implication**: Images must be tagged with semver (0.1.0, 0.2.0), not just `latest`.
+**Implication**: Only images tagged via the Release workflow trigger promotion.
+Dev builds (`X.Y.Z-dev.N`) from the QA Build workflow are ignored.
 
 ### Stage: dev
 
@@ -247,31 +251,28 @@ spec:
           config:
             repoURL: https://github.com/AaronRoethe/homelab
             checkout:
-              - branch: main
+              - branch: master
                 path: ./src
-        - uses: helm-update-image
+        - uses: yaml-update
           as: update-image
           config:
-            path: ./src/platform/overlays/echo-server/values-dev.yaml
-            images:
-              - image: ghcr.io/aroethe/homelab/echo-server
-                key: image.tag
-                value: Tag
+            path: ./src/platform/apps/demo/dev/echo-server.yaml
+            updates:
+              - key: spec.source.helm.valuesObject.image.tag
+                value: ${{ imageFrom("ghcr.io/aaronroethe/echo-server").Tag }}
         - uses: git-commit
           config:
             path: ./src
             messageFromSteps:
               - update-image
         - uses: git-push
+          as: push
           config:
             path: ./src
         - uses: argocd-update
           config:
             apps:
               - name: echo-server-dev
-                sources:
-                  - repoURL: https://github.com/AaronRoethe/homelab
-                    desiredRevision: ${{ outputs.steps['git-push'].commit }}
 ```
 
 ### Stage: staging
@@ -288,21 +289,19 @@ requestedFreight:
         - dev
 ```
 
-Updates `platform/overlays/echo-server/values-staging.yaml` and syncs
+Updates `platform/apps/demo/staging/echo-server.yaml` and syncs
 `echo-server-staging` ArgoCD App.
 
-### Stage: prod
+### Prod (PR-gated, not Kargo)
 
-Same pattern, except:
-
-- `sources.stages: [staging]` — requires Freight verified in staging
-- Updates `platform/overlays/echo-server/values-prod.yaml`, syncs `echo-server-prod`
-- `autoPromotionEnabled: false` in Project — requires manual `kargo promote` or UI click
+Prod is **not** a Kargo Stage. When Kargo updates the staging file on master,
+the `promote-prod.yaml` GitHub Action detects the change and opens a PR to
+update `platform/apps/demo/prod/echo-server.yaml` with the same image tag.
+Merging the PR deploys to prod via ArgoCD auto-sync.
 
 ## Kargo Installation (via ArgoCD)
 
-Kargo publishes an OCI Helm chart. Use ArgoCD multi-source to combine the chart
-with our values file:
+Kargo publishes an OCI Helm chart. Use ArgoCD to install it:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -312,16 +311,13 @@ metadata:
   namespace: argocd
 spec:
   project: default
-  sources:
-    - repoURL: oci://ghcr.io/akuity/kargo-charts/kargo
-      targetRevision: "1.3.1"
-      chart: kargo
-      helm:
-        valueFiles:
-          - $values/platform/kargo/install/values.yaml
-    - repoURL: https://github.com/AaronRoethe/homelab
-      targetRevision: main
-      ref: values
+  source:
+    repoURL: ghcr.io/akuity/kargo-charts
+    targetRevision: "1.3.1"
+    chart: kargo
+    helm:
+      valueFiles:
+        - $values/platform/kargo/install/values.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: kargo
@@ -391,7 +387,7 @@ The PAT needs `repo` scope (read/write access to repository contents).
 
 ```sh
 kubectl -n echo-server create secret generic image-credentials \
-  --from-literal=repoURL=ghcr.io/aroethe/homelab/echo-server \
+  --from-literal=repoURL=ghcr.io/aaronroethe/echo-server \
   --from-literal=username=aroethe \
   --from-literal=password=<GITHUB_PAT>
 
@@ -414,7 +410,7 @@ openssl rand -base64 32
 | 3    | ArgoCD auto-syncs cert-manager, environments, Kargo | All pods Running                     |
 | 4    | Apply git + image credential Secrets (manual)       | Secrets exist                        |
 | 5    | `make kargo-projects`                               | Project + Warehouse + Stages created |
-| 6    | `make echo-release VERSION=0.1.0`                   | Freight flows through pipeline       |
+| 6    | Cut a release (Actions → Release → Run workflow)    | Freight flows through pipeline       |
 
 ## Accessing UIs
 
@@ -426,16 +422,16 @@ openssl rand -base64 32
 ## Known Considerations
 
 **Git commit loops**: Kargo commits to the repo that ArgoCD watches. This is safe
-because Kargo's `argocd-update` step pins ArgoCD to a specific commit SHA. ArgoCD
-sees desired state = live state and does not re-sync.
+because Kargo's `argocd-update` step tells ArgoCD to sync to the specific commit.
+ArgoCD sees desired state = live state and does not re-sync.
 
-**Semver discipline**: The Warehouse uses `semverConstraint`. Images must be tagged
-with valid semver (0.1.0, 0.2.0), not `latest`. Use `make echo-release VERSION=x.y.z`.
+**Semver discipline**: The Warehouse uses `semverConstraint` which ignores prerelease
+tags. Only stable semver tags (from the Release workflow) trigger promotion. Dev
+builds (`X.Y.Z-dev.N` from QA Build) are ignored.
 
-**Single-branch model**: All environments' values files live on `main`. Kargo's
-sequential commits (dev, then staging, then prod) avoid conflicts. If two Freight
-items race, Kargo retries automatically.
+**Single-branch model**: All environments' app definitions live on `master`. Kargo's
+sequential commits (dev, then staging) avoid conflicts. Prod is updated via PR merge.
 
 **Scaling out**: When you add a second app, create a new directory under
 `platform/kargo/projects/<app-name>/` with its own Project, Warehouse, and Stages.
-Add per-env ArgoCD Applications and overlays. The pattern is identical.
+Add per-env ArgoCD Applications under `platform/apps/demo/`. The pattern is identical.

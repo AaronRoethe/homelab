@@ -1,9 +1,10 @@
 name: Release
 
-# Cut a release manually or on a weekly schedule.
+# Cut a stable release manually.
 # Bumps version, creates a GitHub Release with changelog,
-# builds ARM64 images natively on the Pi, and pushes to the local registry.
-# Kargo picks up the new tag → dev → staging → prod (manual approval).
+# builds images and pushes to GHCR.
+# Kargo picks up the new stable tag → auto-promotes dev → staging.
+# Prod promotion happens via PR (promote-prod.yaml).
 
 on:
   workflow_dispatch:
@@ -25,18 +26,12 @@ on:
           - minor
           - major
 
-  schedule:
-    # Weekly release: Mondays at 09:00 UTC
-    - cron: "0 9 * * 1"
-
 env:
   REGISTRY: ghcr.io/aaronroethe
 
 jobs:
   release-echo-server:
-    if: >
-      (github.event_name == 'workflow_dispatch' && inputs.app == 'echo-server') ||
-      github.event_name == 'schedule'
+    if: inputs.app == 'echo-server'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -64,8 +59,8 @@ jobs:
       - name: Determine release version
         id: version
         run: |
-          BUMP="${{ inputs.bump || 'minor' }}"
-          LATEST=$(git tag -l 'echo-server/v*' --sort=-v:refname | head -1)
+          BUMP="${{ inputs.bump }}"
+          LATEST=$(git tag -l 'echo-server/v*' --sort=-v:refname | grep -E '^echo-server/v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
 
           if [ -z "$LATEST" ]; then
             case "$BUMP" in
@@ -134,10 +129,10 @@ jobs:
             **Image:** `${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}`
 
             ### What happens next
-            1. Kargo Warehouse detects the new tag (~5 min)
-            2. Auto-deploys to **dev** → verification runs
-            3. Auto-deploys to **staging** → E2E test suite runs
-            4. **Prod** requires manual approval in [Kargo UI](http://<pi-ip>:30081)
+            1. Kargo Warehouse detects the new stable tag (~5 min)
+            2. Auto-promotes to **dev** → verification runs
+            3. Auto-promotes to **staging** → E2E test suite runs
+            4. GH Action opens a PR for **prod** promotion → merge to deploy
 
             ### Changes since ${{ steps.version.outputs.previous || 'initial' }}
             ```
@@ -147,8 +142,7 @@ jobs:
           prerelease: false
 
   release-traffic-gen:
-    if: >
-      github.event_name == 'workflow_dispatch' && inputs.app == 'traffic-gen'
+    if: inputs.app == 'traffic-gen'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -176,8 +170,8 @@ jobs:
       - name: Determine release version
         id: version
         run: |
-          BUMP="${{ inputs.bump || 'minor' }}"
-          LATEST=$(git tag -l 'traffic-gen/v*' --sort=-v:refname | head -1)
+          BUMP="${{ inputs.bump }}"
+          LATEST=$(git tag -l 'traffic-gen/v*' --sort=-v:refname | grep -E '^traffic-gen/v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
 
           if [ -z "$LATEST" ]; then
             case "$BUMP" in

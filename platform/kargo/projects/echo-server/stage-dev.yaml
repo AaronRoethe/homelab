@@ -39,6 +39,3 @@ spec:
           config:
             apps:
               - name: echo-server-dev
-                sources:
-                  - repoURL: https://github.com/AaronRoethe/homelab
-                    desiredRevision: ${{ outputs.push.commit }}

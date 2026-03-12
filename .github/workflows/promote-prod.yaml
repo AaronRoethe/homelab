@@ -1,0 +1,52 @@
+name: Promote to Prod
+
+# When Kargo promotes to staging (updates staging echo-server.yaml on master),
+# this workflow opens a PR to promote the same image tag to prod.
+# Merging the PR triggers ArgoCD auto-sync to deploy.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "platform/apps/demo/staging/echo-server.yaml"
+
+jobs:
+  promote-prod:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract staging image tag
+        id: staging
+        run: |
+          TAG=$(grep -oP 'tag:\s*\K\S+' platform/apps/demo/staging/echo-server.yaml)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Staging image tag: $TAG"
+
+      - name: Update prod echo-server.yaml
+        run: |
+          sed -i "s/tag: .*/tag: ${{ steps.staging.outputs.tag }}/" \
+            platform/apps/demo/prod/echo-server.yaml
+
+      - name: Create promotion PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "promote(prod): echo-server v${{ steps.staging.outputs.tag }}"
+          title: "promote(prod): echo-server v${{ steps.staging.outputs.tag }}"
+          body: |
+            ## Prod Promotion
+
+            Promotes **echo-server** to prod with image tag `${{ steps.staging.outputs.tag }}`.
+
+            This was auto-promoted through:
+            - Kargo Warehouse detected stable tag
+            - Auto-promoted to dev (verified)
+            - Auto-promoted to staging (verified)
+
+            **Merge this PR to deploy to prod.**
+          branch: promote/prod-echo-server-${{ steps.staging.outputs.tag }}
+          labels: promotion
+          delete-branch: true

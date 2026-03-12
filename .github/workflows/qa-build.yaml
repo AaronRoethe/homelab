@@ -1,9 +1,8 @@
 name: QA Build
 
 # Triggers on every merge to master. Detects which apps changed,
-# bumps the patch version, builds ARM64 images natively on the Pi,
-# and pushes to the local registry.
-# Kargo Warehouse picks up the new tag and promotes through dev → staging.
+# builds dev prerelease images (X.Y.Z-dev.N), and pushes to GHCR.
+# Kargo ignores prerelease tags — only stable releases trigger promotion.
 
 on:
   push:
@@ -60,31 +59,35 @@ jobs:
         working-directory: apps/echo-server
         run: go test -race -count=1 ./...
 
-      - name: Determine next QA version
+      - name: Determine next dev version
         id: version
         run: |
-          LATEST=$(git tag -l 'echo-server/v*' --sort=-v:refname | head -1)
+          # Find the latest stable release tag (no prerelease suffix)
+          LATEST=$(git tag -l 'echo-server/v*' --sort=-v:refname | grep -E '^echo-server/v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
           if [ -z "$LATEST" ]; then
-            NEXT="0.1.0"
+            BASE="0.1.0"
           else
-            VER="${LATEST#echo-server/v}"
-            MAJOR=$(echo "$VER" | cut -d. -f1)
-            MINOR=$(echo "$VER" | cut -d. -f2)
-            PATCH=$(echo "$VER" | cut -d. -f3)
-            NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))"
+            BASE="${LATEST#echo-server/v}"
           fi
+          # Count commits since last stable tag for dev counter
+          if [ -z "$LATEST" ]; then
+            N=$(git rev-list --count HEAD -- apps/echo-server/ apps/pkg/)
+          else
+            N=$(git rev-list --count "${LATEST}..HEAD" -- apps/echo-server/ apps/pkg/)
+          fi
+          NEXT="${BASE}-dev.${N}"
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "QA version: $NEXT"
+          echo "Dev version: $NEXT (base: $BASE, commits: $N)"
 
       - name: Build and push echo-server
         run: |
           docker build \
             -f apps/echo-server/Dockerfile \
             -t ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }} \
-            -t ${{ env.REGISTRY }}/echo-server:qa-latest \
+            -t ${{ env.REGISTRY }}/echo-server:dev-latest \
             .
           docker push ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}
-          docker push ${{ env.REGISTRY }}/echo-server:qa-latest
+          docker push ${{ env.REGISTRY }}/echo-server:dev-latest
 
       - name: Build and push E2E test image
         run: |
@@ -107,7 +110,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Version:** \`${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Image:** \`${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Kargo:** Warehouse will detect this tag and promote to dev → staging" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Note:** Prerelease tag — Kargo will ignore this. Use Release workflow for stable versions." >> "$GITHUB_STEP_SUMMARY"
 
   qa-traffic-gen:
     needs: detect-changes
@@ -136,31 +139,33 @@ jobs:
         working-directory: apps/traffic-gen
         run: go vet ./...
 
-      - name: Determine next QA version
+      - name: Determine next dev version
         id: version
         run: |
-          LATEST=$(git tag -l 'traffic-gen/v*' --sort=-v:refname | head -1)
+          LATEST=$(git tag -l 'traffic-gen/v*' --sort=-v:refname | grep -E '^traffic-gen/v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
           if [ -z "$LATEST" ]; then
-            NEXT="0.1.0"
+            BASE="0.1.0"
           else
-            VER="${LATEST#traffic-gen/v}"
-            MAJOR=$(echo "$VER" | cut -d. -f1)
-            MINOR=$(echo "$VER" | cut -d. -f2)
-            PATCH=$(echo "$VER" | cut -d. -f3)
-            NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))"
+            BASE="${LATEST#traffic-gen/v}"
           fi
+          if [ -z "$LATEST" ]; then
+            N=$(git rev-list --count HEAD -- apps/traffic-gen/)
+          else
+            N=$(git rev-list --count "${LATEST}..HEAD" -- apps/traffic-gen/)
+          fi
+          NEXT="${BASE}-dev.${N}"
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "QA version: $NEXT"
+          echo "Dev version: $NEXT (base: $BASE, commits: $N)"
 
       - name: Build and push traffic-gen
         run: |
           docker build \
             -f apps/traffic-gen/Dockerfile \
             -t ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }} \
-            -t ${{ env.REGISTRY }}/traffic-gen:qa-latest \
+            -t ${{ env.REGISTRY }}/traffic-gen:dev-latest \
             .
           docker push ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }}
-          docker push ${{ env.REGISTRY }}/traffic-gen:qa-latest
+          docker push ${{ env.REGISTRY }}/traffic-gen:dev-latest
 
       - name: Tag git
         run: |
