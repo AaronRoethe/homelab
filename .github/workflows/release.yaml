@@ -100,9 +100,10 @@ jobs:
       - name: Build and push echo-server
         run: |
           docker build \
+            -f apps/echo-server/Dockerfile \
             -t ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }} \
             -t ${{ env.REGISTRY }}/echo-server:latest \
-            apps/echo-server/
+            .
           docker push ${{ env.REGISTRY }}/echo-server:${{ steps.version.outputs.version }}
           docker push ${{ env.REGISTRY }}/echo-server:latest
 
@@ -203,9 +204,10 @@ jobs:
       - name: Build and push traffic-gen
         run: |
           docker build \
+            -f apps/traffic-gen/Dockerfile \
             -t ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }} \
             -t ${{ env.REGISTRY }}/traffic-gen:latest \
-            apps/traffic-gen/
+            .
           docker push ${{ env.REGISTRY }}/traffic-gen:${{ steps.version.outputs.version }}
           docker push ${{ env.REGISTRY }}/traffic-gen:latest
 

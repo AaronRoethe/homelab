@@ -164,9 +164,9 @@ deploy_apps() {
     echo "--- traffic-gen ---"
     cd apps/traffic-gen
     go vet ./...
-    docker build -t "${REGISTRY_HOST}/traffic-gen:0.1.0" .
-    docker push "${REGISTRY_HOST}/traffic-gen:0.1.0"
     cd ../..
+    docker build -f apps/traffic-gen/Dockerfile -t "${REGISTRY_HOST}/traffic-gen:0.1.0" .
+    docker push "${REGISTRY_HOST}/traffic-gen:0.1.0"
 
     echo ""
     echo "=== Images pushed to ${REGISTRY_HOST} ==="
